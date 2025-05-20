@@ -19,30 +19,22 @@ export function Header() {
           <div className="flex-shrink-0">
             <Link href="/">
               <h1 className="text-2xl font-heading font-bold text-neutral-800 dark:text-neutral-100 cursor-pointer">
-                Chat<span className="text-primary-500">Boot</span>
+                Interage<span className="text-primary-500">+</span>
               </h1>
             </Link>
           </div>
           <nav className="hidden md:ml-8 md:flex md:space-x-6">
-            <Link href="/">
-              <a className={`${location === '/' ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-600 dark:text-neutral-400'} hover:text-neutral-900 dark:hover:text-neutral-100 font-medium`}>
-                Dashboard
-              </a>
+            <Link href="/" className={`${location === '/' ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-600 dark:text-neutral-400'} hover:text-neutral-900 dark:hover:text-neutral-100 font-medium`}>
+              Dashboard
             </Link>
-            <Link href="/#clients">
-              <a className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
-                Clientes
-              </a>
+            <Link href="/#clients" className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
+              Clientes
             </Link>
-            <Link href="/#settings">
-              <a className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
-                Configurações
-              </a>
+            <Link href="/support" className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
+              Suporte
             </Link>
-            <Link href="/#help">
-              <a className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
-                Ajuda
-              </a>
+            <Link href="/login" className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-medium">
+              Login
             </Link>
           </nav>
         </div>
