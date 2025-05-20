@@ -64,18 +64,18 @@ export function ClientCard({ client }: ClientCardProps) {
           </div>
         </div>
         
-        <div className="flex justify-between">
-          <Link href={`/config/${client.id}`}>
-            <a className="inline-flex items-center text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium">
-              <i className="ri-settings-4-line mr-1"></i>
-              Configurar
-            </a>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <Link href={`/config/${client.id}`} className="inline-flex items-center justify-center text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium">
+            <i className="ri-settings-4-line mr-1"></i>
+            Configurar
           </Link>
-          <Link href={`/qrcode/${client.id}`}>
-            <a className="inline-flex items-center text-sm text-neutral-600 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 font-medium">
-              <i className="ri-qr-code-line mr-1"></i>
-              QR Code
-            </a>
+          <Link href={`/responses/${client.id}`} className="inline-flex items-center justify-center text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium">
+            <i className="ri-chat-3-line mr-1"></i>
+            Respostas
+          </Link>
+          <Link href={`/qrcode/${client.id}`} className="inline-flex items-center justify-center text-sm text-neutral-600 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 font-medium">
+            <i className="ri-qr-code-line mr-1"></i>
+            QR Code
           </Link>
         </div>
       </div>
