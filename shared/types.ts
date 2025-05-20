@@ -1,4 +1,4 @@
-import { Client, ChatSession, ChatMessage, Statistic, CustomResponse, SupportChat, SupportMessage } from './schema';
+import { Client, ChatSession, ChatMessage, Statistic, SupportChat } from './schema';
 
 // Types for frontend state management
 export interface ChatbotConfig {
@@ -66,10 +66,32 @@ export interface SupportAgentWithUser {
   user?: User;
 }
 
+export interface SupportMessage {
+  id: number;
+  chatId: number;
+  userId: number;
+  content: string;
+  isFromAgent: boolean;
+  timestamp: string;
+  isRead: boolean;
+}
+
 export interface SupportChatWithRelations extends SupportChat {
   client?: Client;
   session?: ChatSession;
   messages?: SupportMessage[];
+  lastMessage?: string;
+  isRead?: boolean;
+}
+
+export interface CustomResponse {
+  id: number;
+  clientId: number;
+  keyword: string;
+  response: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CustomResponseForm {

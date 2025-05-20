@@ -1,30 +1,30 @@
-import { useState, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
+import { useState } from "react";
+import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Header } from "@/components/Header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Table, 
-  TableBody, 
-  TableCaption, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { Switch } from "@/components/ui/switch";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
+import { CustomResponse, CustomResponseForm } from "@shared/types";
+
+// UI Components
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { 
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -35,405 +35,329 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { apiRequest } from "@/lib/queryClient";
-import { queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { CustomResponse, CustomResponseForm } from "@shared/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+const responseSchema = z.object({
+  clientId: z.number(),
+  keyword: z.string().min(1, "Palavra-chave é obrigatória"),
+  response: z.string().min(1, "Resposta é obrigatória"),
+  isActive: z.boolean().default(true),
+});
 
 export default function ResponsesManager() {
   const { id } = useParams<{ id: string }>();
-  const [_, navigate] = useLocation();
+  const clientId = parseInt(id);
   const { toast } = useToast();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [currentResponse, setCurrentResponse] = useState<CustomResponse | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [deleteResponseId, setDeleteResponseId] = useState<number | null>(null);
-  
-  const [formData, setFormData] = useState<CustomResponseForm>({
-    clientId: parseInt(id),
-    keyword: "",
-    response: "",
-    isActive: true
+
+  // Initialize the form
+  const form = useForm<CustomResponseForm>({
+    resolver: zodResolver(responseSchema),
+    defaultValues: {
+      clientId,
+      keyword: "",
+      response: "",
+      isActive: true,
+    },
   });
-  
-  // Fetch client info
-  const { data: client, isLoading: clientLoading } = useQuery({
-    queryKey: [`/api/clients/${id}`],
-    queryFn: async () => {
-      const res = await fetch(`/api/clients/${id}`);
-      if (!res.ok) throw new Error('Failed to fetch client');
-      return await res.json();
-    }
+
+  // Fetch client details
+  const { data: client } = useQuery({
+    queryKey: [`/api/clients/${clientId}`],
   });
-  
+
   // Fetch responses
-  const { data: responses, isLoading: responsesLoading } = useQuery({
-    queryKey: [`/api/responses/${id}`],
-    queryFn: async () => {
-      const res = await fetch(`/api/responses/${id}`);
-      if (!res.ok) throw new Error('Failed to fetch responses');
-      return await res.json() as CustomResponse[];
-    }
+  const { data: responses = [], isLoading } = useQuery({
+    queryKey: [`/api/responses/${clientId}`],
   });
-  
+
   // Create response mutation
-  const createResponse = useMutation({
+  const createMutation = useMutation({
     mutationFn: async (data: CustomResponseForm) => {
-      const res = await apiRequest('POST', '/api/responses', data);
-      return await res.json();
+      const res = await apiRequest("POST", "/api/responses", data);
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/responses/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/responses/${clientId}`] });
+      setIsDialogOpen(false);
+      form.reset({
+        clientId,
+        keyword: "",
+        response: "",
+        isActive: true,
+      });
       toast({
         title: "Resposta criada",
-        description: "A resposta personalizada foi criada com sucesso.",
+        description: "Resposta personalizada criada com sucesso.",
       });
-      setIsDialogOpen(false);
-      resetForm();
     },
     onError: (error) => {
       toast({
-        title: "Erro ao criar",
-        description: "Ocorreu um erro ao tentar criar a resposta personalizada.",
+        title: "Erro",
+        description: `Erro ao criar resposta: ${error.message}`,
         variant: "destructive",
       });
     },
   });
-  
+
   // Update response mutation
-  const updateResponse = useMutation({
-    mutationFn: async ({ responseId, data }: { responseId: number, data: Partial<CustomResponseForm> }) => {
-      const res = await apiRequest('PUT', `/api/responses/${responseId}`, data);
-      return await res.json();
+  const updateMutation = useMutation({
+    mutationFn: async (data: CustomResponse) => {
+      const { id, ...updateData } = data;
+      const res = await apiRequest("PUT", `/api/responses/${id}`, updateData);
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/responses/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/responses/${clientId}`] });
+      setIsDialogOpen(false);
       toast({
         title: "Resposta atualizada",
-        description: "A resposta personalizada foi atualizada com sucesso.",
+        description: "Resposta personalizada atualizada com sucesso.",
       });
-      setIsDialogOpen(false);
-      resetForm();
     },
     onError: (error) => {
       toast({
-        title: "Erro ao atualizar",
-        description: "Ocorreu um erro ao tentar atualizar a resposta personalizada.",
+        title: "Erro",
+        description: `Erro ao atualizar resposta: ${error.message}`,
         variant: "destructive",
       });
     },
   });
-  
+
   // Delete response mutation
-  const deleteResponse = useMutation({
-    mutationFn: async (responseId: number) => {
-      await apiRequest('DELETE', `/api/responses/${responseId}`);
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/responses/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/responses/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/responses/${clientId}`] });
+      setIsDeleteDialogOpen(false);
       toast({
         title: "Resposta excluída",
-        description: "A resposta personalizada foi excluída com sucesso.",
+        description: "Resposta personalizada excluída com sucesso.",
       });
-      setDeleteResponseId(null);
     },
     onError: (error) => {
       toast({
-        title: "Erro ao excluir",
-        description: "Ocorreu um erro ao tentar excluir a resposta personalizada.",
+        title: "Erro",
+        description: `Erro ao excluir resposta: ${error.message}`,
         variant: "destructive",
       });
     },
   });
-  
-  // Toggle response active state
-  const toggleActive = useMutation({
-    mutationFn: async ({ responseId, isActive }: { responseId: number, isActive: boolean }) => {
-      const res = await apiRequest('PUT', `/api/responses/${responseId}`, { isActive });
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/responses/${id}`] });
-    },
-    onError: (error) => {
-      toast({
-        title: "Erro ao atualizar",
-        description: "Ocorreu um erro ao tentar atualizar o status da resposta.",
-        variant: "destructive",
+
+  const onSubmit = (data: CustomResponseForm) => {
+    if (isEditing && currentResponse) {
+      updateMutation.mutate({
+        ...data,
+        id: currentResponse.id,
+        createdAt: currentResponse.createdAt,
+        updatedAt: new Date().toISOString(),
       });
-    },
-  });
-  
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-  
-  const handleSwitchChange = (checked: boolean) => {
-    setFormData(prev => ({ ...prev, isActive: checked }));
-  };
-  
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (isEditing && formData.id) {
-      const { id: responseId, clientId, ...updates } = formData;
-      updateResponse.mutate({ responseId, data: updates });
     } else {
-      createResponse.mutate(formData);
+      createMutation.mutate(data);
     }
   };
-  
-  const openCreateDialog = () => {
+
+  const openAddDialog = () => {
     setIsEditing(false);
-    resetForm();
+    form.reset({
+      clientId,
+      keyword: "",
+      response: "",
+      isActive: true,
+    });
     setIsDialogOpen(true);
   };
-  
+
   const openEditDialog = (response: CustomResponse) => {
     setIsEditing(true);
-    setFormData({
-      id: response.id,
+    setCurrentResponse(response);
+    form.reset({
       clientId: response.clientId,
       keyword: response.keyword,
       response: response.response,
-      isActive: response.isActive
+      isActive: response.isActive,
     });
     setIsDialogOpen(true);
   };
-  
-  const resetForm = () => {
-    setFormData({
-      clientId: parseInt(id),
-      keyword: "",
-      response: "",
-      isActive: true
-    });
+
+  const openDeleteDialog = (response: CustomResponse) => {
+    setCurrentResponse(response);
+    setIsDeleteDialogOpen(true);
   };
-  
-  if (clientLoading) {
-    return (
-      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-        <Header />
-        <main className="flex-1 overflow-y-auto">
-          <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
-            <Skeleton className="h-8 w-64 mb-6" />
-            <Skeleton className="h-96 w-full" />
-          </div>
-        </main>
-      </div>
-    );
-  }
-  
-  if (!client) {
-    return (
-      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-        <Header />
-        <main className="flex-1 overflow-y-auto">
-          <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
-            <div className="text-center py-12">
-              <h2 className="text-xl font-heading font-semibold text-neutral-800 dark:text-neutral-100 mb-2">Cliente não encontrado</h2>
-              <p className="text-neutral-600 dark:text-neutral-400 mb-6">O cliente que você está procurando não existe ou foi removido.</p>
-              <Button onClick={() => navigate('/')}>Voltar para o Dashboard</Button>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
-  
+
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-      <Header />
-      
-      <main className="flex-1 overflow-y-auto">
-        <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
-          <div className="mb-6 flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-heading font-semibold text-neutral-800 dark:text-neutral-100">Respostas Personalizadas</h2>
-              <p className="text-neutral-600 dark:text-neutral-400">
-                Configure respostas automáticas para {client.name}
-              </p>
-            </div>
-            <div className="flex space-x-2">
-              <Button variant="outline" onClick={() => navigate(`/config/${id}`)}>
-                <i className="ri-settings-4-line mr-1"></i> Configurações
-              </Button>
-              <Button
-                className="bg-primary-500 hover:bg-primary-600 text-white"
-                onClick={openCreateDialog}
-              >
-                <i className="ri-add-line mr-1"></i> Nova Resposta
-              </Button>
-            </div>
-          </div>
-          
-          {responsesLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm overflow-hidden">
-              <Table>
-                <TableCaption>Lista de respostas personalizadas para {client.name}</TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[200px]">Palavra-chave</TableHead>
-                    <TableHead>Resposta</TableHead>
-                    <TableHead className="w-[120px]">Ativo</TableHead>
-                    <TableHead className="w-[120px] text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {responses && responses.length > 0 ? (
-                    responses.map((response) => (
-                      <TableRow key={response.id}>
-                        <TableCell className="font-medium">{response.keyword}</TableCell>
-                        <TableCell className="truncate max-w-md">{response.response}</TableCell>
-                        <TableCell>
-                          <Switch 
-                            checked={response.isActive} 
-                            onCheckedChange={(checked) => toggleActive.mutate({ responseId: response.id, isActive: checked })}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Button size="sm" variant="ghost" onClick={() => openEditDialog(response)}>
-                              <i className="ri-edit-line"></i>
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="ghost" className="text-red-500">
-                                  <i className="ri-delete-bin-line"></i>
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Excluir resposta?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Esta ação não pode ser desfeita. A resposta para a palavra-chave "{response.keyword}" será permanentemente excluída.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    className="bg-red-500 hover:bg-red-600"
-                                    onClick={() => deleteResponse.mutate(response.id)}
-                                  >
-                                    Excluir
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-6 text-neutral-500 dark:text-neutral-400">
-                        Nenhuma resposta personalizada configurada.
-                        <div className="mt-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={openCreateDialog}
-                          >
-                            <i className="ri-add-line mr-1"></i> Adicionar resposta
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+    <div className="container py-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Respostas Personalizadas</h1>
+          <p className="text-neutral-500">
+            {client ? `Cliente: ${client.name}` : "Carregando..."}
+          </p>
         </div>
-      </main>
-      
-      {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[550px]">
-          <DialogHeader>
-            <DialogTitle>{isEditing ? 'Editar Resposta' : 'Nova Resposta'}</DialogTitle>
-            <DialogDescription>
-              Configure uma resposta automatizada que será acionada quando a palavra-chave for mencionada pelo usuário.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="keyword">Palavra-chave</Label>
-                <Input
-                  id="keyword"
-                  name="keyword"
-                  placeholder="Ex: horário, preço, entrega"
-                  value={formData.keyword}
-                  onChange={handleInputChange}
-                  required
-                />
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  Esta é a palavra que vai acionar a resposta automática quando mencionada pelo usuário.
+        <Button onClick={openAddDialog}>Adicionar Resposta</Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {isLoading ? (
+          <p>Carregando respostas...</p>
+        ) : responses.length === 0 ? (
+          <div className="col-span-full py-12 text-center">
+            <p className="text-xl text-neutral-500 mb-4">
+              Nenhuma resposta personalizada encontrada
+            </p>
+            <Button onClick={openAddDialog}>Adicionar Primeira Resposta</Button>
+          </div>
+        ) : (
+          responses.map((response: CustomResponse) => (
+            <Card key={response.id} className="border-t-4 border-t-primary">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <CardTitle className="text-lg">{response.keyword}</CardTitle>
+                  <Badge variant={response.isActive ? "default" : "outline"}>
+                    {response.isActive ? "Ativo" : "Inativo"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-4 text-sm text-neutral-600 whitespace-pre-wrap">
+                  {response.response}
                 </p>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="response">Resposta</Label>
-                <Textarea
-                  id="response"
-                  name="response"
-                  placeholder="Digite aqui a resposta completa que será enviada automaticamente..."
-                  rows={5}
-                  value={formData.response}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="isActive"
-                  checked={formData.isActive}
-                  onCheckedChange={handleSwitchChange}
-                />
-                <Label htmlFor="isActive">Resposta ativa</Label>
-              </div>
-            </div>
-            
-            <DialogFooter className="mt-6">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setIsDialogOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button 
-                type="submit" 
-                className="bg-primary-500 hover:bg-primary-600"
-                disabled={createResponse.isPending || updateResponse.isPending}
-              >
-                {(createResponse.isPending || updateResponse.isPending) ? (
-                  <div className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Salvando...
-                  </div>
-                ) : (
-                  'Salvar'
+                <Separator className="my-3" />
+                <div className="flex justify-end gap-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEditDialog(response)}
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => openDeleteDialog(response)}
+                  >
+                    Excluir
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isEditing ? "Editar Resposta" : "Adicionar Resposta"}
+            </DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="keyword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Palavra-chave</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: horário_funcionamento" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </Button>
-            </DialogFooter>
-          </form>
+              />
+
+              <FormField
+                control={form.control}
+                name="response"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Resposta</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Digite a resposta a ser enviada quando a palavra-chave for detectada"
+                        className="min-h-[120px]"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="isActive"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>Ativo</FormLabel>
+                      <p className="text-sm text-neutral-500">
+                        Ative ou desative esta resposta
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsDialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                  {createMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta resposta personalizada?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => currentResponse && deleteMutation.mutate(currentResponse.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
