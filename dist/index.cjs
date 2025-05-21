@@ -1,17 +1,11 @@
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined")
-    return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
-var __commonJS = (cb, mod) => function __require2() {
+var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
@@ -35,14 +29,3713 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// node_modules/ws/lib/constants.js
+var require_constants = __commonJS({
+  "node_modules/ws/lib/constants.js"(exports2, module2) {
+    "use strict";
+    var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
+    var hasBlob = typeof Blob !== "undefined";
+    if (hasBlob)
+      BINARY_TYPES.push("blob");
+    module2.exports = {
+      BINARY_TYPES,
+      EMPTY_BUFFER: Buffer.alloc(0),
+      GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
+      hasBlob,
+      kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
+      kListener: Symbol("kListener"),
+      kStatusCode: Symbol("status-code"),
+      kWebSocket: Symbol("websocket"),
+      NOOP: () => {
+      }
+    };
+  }
+});
+
+// node_modules/ws/lib/buffer-util.js
+var require_buffer_util = __commonJS({
+  "node_modules/ws/lib/buffer-util.js"(exports2, module2) {
+    "use strict";
+    var { EMPTY_BUFFER } = require_constants();
+    var FastBuffer = Buffer[Symbol.species];
+    function concat(list, totalLength) {
+      if (list.length === 0)
+        return EMPTY_BUFFER;
+      if (list.length === 1)
+        return list[0];
+      const target = Buffer.allocUnsafe(totalLength);
+      let offset = 0;
+      for (let i = 0; i < list.length; i++) {
+        const buf = list[i];
+        target.set(buf, offset);
+        offset += buf.length;
+      }
+      if (offset < totalLength) {
+        return new FastBuffer(target.buffer, target.byteOffset, offset);
+      }
+      return target;
+    }
+    function _mask(source, mask, output, offset, length) {
+      for (let i = 0; i < length; i++) {
+        output[offset + i] = source[i] ^ mask[i & 3];
+      }
+    }
+    function _unmask(buffer, mask) {
+      for (let i = 0; i < buffer.length; i++) {
+        buffer[i] ^= mask[i & 3];
+      }
+    }
+    function toArrayBuffer(buf) {
+      if (buf.length === buf.buffer.byteLength) {
+        return buf.buffer;
+      }
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
+    }
+    function toBuffer(data) {
+      toBuffer.readOnly = true;
+      if (Buffer.isBuffer(data))
+        return data;
+      let buf;
+      if (data instanceof ArrayBuffer) {
+        buf = new FastBuffer(data);
+      } else if (ArrayBuffer.isView(data)) {
+        buf = new FastBuffer(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        buf = Buffer.from(data);
+        toBuffer.readOnly = false;
+      }
+      return buf;
+    }
+    module2.exports = {
+      concat,
+      mask: _mask,
+      toArrayBuffer,
+      toBuffer,
+      unmask: _unmask
+    };
+    if (!process.env.WS_NO_BUFFER_UTIL) {
+      try {
+        const bufferUtil = require("bufferutil");
+        module2.exports.mask = function(source, mask, output, offset, length) {
+          if (length < 48)
+            _mask(source, mask, output, offset, length);
+          else
+            bufferUtil.mask(source, mask, output, offset, length);
+        };
+        module2.exports.unmask = function(buffer, mask) {
+          if (buffer.length < 32)
+            _unmask(buffer, mask);
+          else
+            bufferUtil.unmask(buffer, mask);
+        };
+      } catch (e) {
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/limiter.js
+var require_limiter = __commonJS({
+  "node_modules/ws/lib/limiter.js"(exports2, module2) {
+    "use strict";
+    var kDone = Symbol("kDone");
+    var kRun = Symbol("kRun");
+    var Limiter = class {
+      /**
+       * Creates a new `Limiter`.
+       *
+       * @param {Number} [concurrency=Infinity] The maximum number of jobs allowed
+       *     to run concurrently
+       */
+      constructor(concurrency) {
+        this[kDone] = () => {
+          this.pending--;
+          this[kRun]();
+        };
+        this.concurrency = concurrency || Infinity;
+        this.jobs = [];
+        this.pending = 0;
+      }
+      /**
+       * Adds a job to the queue.
+       *
+       * @param {Function} job The job to run
+       * @public
+       */
+      add(job) {
+        this.jobs.push(job);
+        this[kRun]();
+      }
+      /**
+       * Removes a job from the queue and runs it if possible.
+       *
+       * @private
+       */
+      [kRun]() {
+        if (this.pending === this.concurrency)
+          return;
+        if (this.jobs.length) {
+          const job = this.jobs.shift();
+          this.pending++;
+          job(this[kDone]);
+        }
+      }
+    };
+    module2.exports = Limiter;
+  }
+});
+
+// node_modules/ws/lib/permessage-deflate.js
+var require_permessage_deflate = __commonJS({
+  "node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
+    "use strict";
+    var zlib = require("zlib");
+    var bufferUtil = require_buffer_util();
+    var Limiter = require_limiter();
+    var { kStatusCode } = require_constants();
+    var FastBuffer = Buffer[Symbol.species];
+    var TRAILER = Buffer.from([0, 0, 255, 255]);
+    var kPerMessageDeflate = Symbol("permessage-deflate");
+    var kTotalLength = Symbol("total-length");
+    var kCallback = Symbol("callback");
+    var kBuffers = Symbol("buffers");
+    var kError = Symbol("error");
+    var zlibLimiter;
+    var PerMessageDeflate = class {
+      /**
+       * Creates a PerMessageDeflate instance.
+       *
+       * @param {Object} [options] Configuration options
+       * @param {(Boolean|Number)} [options.clientMaxWindowBits] Advertise support
+       *     for, or request, a custom client window size
+       * @param {Boolean} [options.clientNoContextTakeover=false] Advertise/
+       *     acknowledge disabling of client context takeover
+       * @param {Number} [options.concurrencyLimit=10] The number of concurrent
+       *     calls to zlib
+       * @param {(Boolean|Number)} [options.serverMaxWindowBits] Request/confirm the
+       *     use of a custom server window size
+       * @param {Boolean} [options.serverNoContextTakeover=false] Request/accept
+       *     disabling of server context takeover
+       * @param {Number} [options.threshold=1024] Size (in bytes) below which
+       *     messages should not be compressed if context takeover is disabled
+       * @param {Object} [options.zlibDeflateOptions] Options to pass to zlib on
+       *     deflate
+       * @param {Object} [options.zlibInflateOptions] Options to pass to zlib on
+       *     inflate
+       * @param {Boolean} [isServer=false] Create the instance in either server or
+       *     client mode
+       * @param {Number} [maxPayload=0] The maximum allowed message length
+       */
+      constructor(options, isServer, maxPayload) {
+        this._maxPayload = maxPayload | 0;
+        this._options = options || {};
+        this._threshold = this._options.threshold !== void 0 ? this._options.threshold : 1024;
+        this._isServer = !!isServer;
+        this._deflate = null;
+        this._inflate = null;
+        this.params = null;
+        if (!zlibLimiter) {
+          const concurrency = this._options.concurrencyLimit !== void 0 ? this._options.concurrencyLimit : 10;
+          zlibLimiter = new Limiter(concurrency);
+        }
+      }
+      /**
+       * @type {String}
+       */
+      static get extensionName() {
+        return "permessage-deflate";
+      }
+      /**
+       * Create an extension negotiation offer.
+       *
+       * @return {Object} Extension parameters
+       * @public
+       */
+      offer() {
+        const params = {};
+        if (this._options.serverNoContextTakeover) {
+          params.server_no_context_takeover = true;
+        }
+        if (this._options.clientNoContextTakeover) {
+          params.client_no_context_takeover = true;
+        }
+        if (this._options.serverMaxWindowBits) {
+          params.server_max_window_bits = this._options.serverMaxWindowBits;
+        }
+        if (this._options.clientMaxWindowBits) {
+          params.client_max_window_bits = this._options.clientMaxWindowBits;
+        } else if (this._options.clientMaxWindowBits == null) {
+          params.client_max_window_bits = true;
+        }
+        return params;
+      }
+      /**
+       * Accept an extension negotiation offer/response.
+       *
+       * @param {Array} configurations The extension negotiation offers/reponse
+       * @return {Object} Accepted configuration
+       * @public
+       */
+      accept(configurations) {
+        configurations = this.normalizeParams(configurations);
+        this.params = this._isServer ? this.acceptAsServer(configurations) : this.acceptAsClient(configurations);
+        return this.params;
+      }
+      /**
+       * Releases all resources used by the extension.
+       *
+       * @public
+       */
+      cleanup() {
+        if (this._inflate) {
+          this._inflate.close();
+          this._inflate = null;
+        }
+        if (this._deflate) {
+          const callback = this._deflate[kCallback];
+          this._deflate.close();
+          this._deflate = null;
+          if (callback) {
+            callback(
+              new Error(
+                "The deflate stream was closed while data was being processed"
+              )
+            );
+          }
+        }
+      }
+      /**
+       *  Accept an extension negotiation offer.
+       *
+       * @param {Array} offers The extension negotiation offers
+       * @return {Object} Accepted configuration
+       * @private
+       */
+      acceptAsServer(offers) {
+        const opts = this._options;
+        const accepted = offers.find((params) => {
+          if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && !params.client_max_window_bits) {
+            return false;
+          }
+          return true;
+        });
+        if (!accepted) {
+          throw new Error("None of the extension offers can be accepted");
+        }
+        if (opts.serverNoContextTakeover) {
+          accepted.server_no_context_takeover = true;
+        }
+        if (opts.clientNoContextTakeover) {
+          accepted.client_no_context_takeover = true;
+        }
+        if (typeof opts.serverMaxWindowBits === "number") {
+          accepted.server_max_window_bits = opts.serverMaxWindowBits;
+        }
+        if (typeof opts.clientMaxWindowBits === "number") {
+          accepted.client_max_window_bits = opts.clientMaxWindowBits;
+        } else if (accepted.client_max_window_bits === true || opts.clientMaxWindowBits === false) {
+          delete accepted.client_max_window_bits;
+        }
+        return accepted;
+      }
+      /**
+       * Accept the extension negotiation response.
+       *
+       * @param {Array} response The extension negotiation response
+       * @return {Object} Accepted configuration
+       * @private
+       */
+      acceptAsClient(response) {
+        const params = response[0];
+        if (this._options.clientNoContextTakeover === false && params.client_no_context_takeover) {
+          throw new Error('Unexpected parameter "client_no_context_takeover"');
+        }
+        if (!params.client_max_window_bits) {
+          if (typeof this._options.clientMaxWindowBits === "number") {
+            params.client_max_window_bits = this._options.clientMaxWindowBits;
+          }
+        } else if (this._options.clientMaxWindowBits === false || typeof this._options.clientMaxWindowBits === "number" && params.client_max_window_bits > this._options.clientMaxWindowBits) {
+          throw new Error(
+            'Unexpected or invalid parameter "client_max_window_bits"'
+          );
+        }
+        return params;
+      }
+      /**
+       * Normalize parameters.
+       *
+       * @param {Array} configurations The extension negotiation offers/reponse
+       * @return {Array} The offers/response with normalized parameters
+       * @private
+       */
+      normalizeParams(configurations) {
+        configurations.forEach((params) => {
+          Object.keys(params).forEach((key) => {
+            let value2 = params[key];
+            if (value2.length > 1) {
+              throw new Error(`Parameter "${key}" must have only a single value`);
+            }
+            value2 = value2[0];
+            if (key === "client_max_window_bits") {
+              if (value2 !== true) {
+                const num = +value2;
+                if (!Number.isInteger(num) || num < 8 || num > 15) {
+                  throw new TypeError(
+                    `Invalid value for parameter "${key}": ${value2}`
+                  );
+                }
+                value2 = num;
+              } else if (!this._isServer) {
+                throw new TypeError(
+                  `Invalid value for parameter "${key}": ${value2}`
+                );
+              }
+            } else if (key === "server_max_window_bits") {
+              const num = +value2;
+              if (!Number.isInteger(num) || num < 8 || num > 15) {
+                throw new TypeError(
+                  `Invalid value for parameter "${key}": ${value2}`
+                );
+              }
+              value2 = num;
+            } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
+              if (value2 !== true) {
+                throw new TypeError(
+                  `Invalid value for parameter "${key}": ${value2}`
+                );
+              }
+            } else {
+              throw new Error(`Unknown parameter "${key}"`);
+            }
+            params[key] = value2;
+          });
+        });
+        return configurations;
+      }
+      /**
+       * Decompress data. Concurrency limited.
+       *
+       * @param {Buffer} data Compressed data
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @public
+       */
+      decompress(data, fin, callback) {
+        zlibLimiter.add((done) => {
+          this._decompress(data, fin, (err, result) => {
+            done();
+            callback(err, result);
+          });
+        });
+      }
+      /**
+       * Compress data. Concurrency limited.
+       *
+       * @param {(Buffer|String)} data Data to compress
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @public
+       */
+      compress(data, fin, callback) {
+        zlibLimiter.add((done) => {
+          this._compress(data, fin, (err, result) => {
+            done();
+            callback(err, result);
+          });
+        });
+      }
+      /**
+       * Decompress data.
+       *
+       * @param {Buffer} data Compressed data
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @private
+       */
+      _decompress(data, fin, callback) {
+        const endpoint = this._isServer ? "client" : "server";
+        if (!this._inflate) {
+          const key = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._inflate = zlib.createInflateRaw({
+            ...this._options.zlibInflateOptions,
+            windowBits
+          });
+          this._inflate[kPerMessageDeflate] = this;
+          this._inflate[kTotalLength] = 0;
+          this._inflate[kBuffers] = [];
+          this._inflate.on("error", inflateOnError);
+          this._inflate.on("data", inflateOnData);
+        }
+        this._inflate[kCallback] = callback;
+        this._inflate.write(data);
+        if (fin)
+          this._inflate.write(TRAILER);
+        this._inflate.flush(() => {
+          const err = this._inflate[kError];
+          if (err) {
+            this._inflate.close();
+            this._inflate = null;
+            callback(err);
+            return;
+          }
+          const data2 = bufferUtil.concat(
+            this._inflate[kBuffers],
+            this._inflate[kTotalLength]
+          );
+          if (this._inflate._readableState.endEmitted) {
+            this._inflate.close();
+            this._inflate = null;
+          } else {
+            this._inflate[kTotalLength] = 0;
+            this._inflate[kBuffers] = [];
+            if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+              this._inflate.reset();
+            }
+          }
+          callback(null, data2);
+        });
+      }
+      /**
+       * Compress data.
+       *
+       * @param {(Buffer|String)} data Data to compress
+       * @param {Boolean} fin Specifies whether or not this is the last fragment
+       * @param {Function} callback Callback
+       * @private
+       */
+      _compress(data, fin, callback) {
+        const endpoint = this._isServer ? "server" : "client";
+        if (!this._deflate) {
+          const key = `${endpoint}_max_window_bits`;
+          const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+          this._deflate = zlib.createDeflateRaw({
+            ...this._options.zlibDeflateOptions,
+            windowBits
+          });
+          this._deflate[kTotalLength] = 0;
+          this._deflate[kBuffers] = [];
+          this._deflate.on("data", deflateOnData);
+        }
+        this._deflate[kCallback] = callback;
+        this._deflate.write(data);
+        this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+          if (!this._deflate) {
+            return;
+          }
+          let data2 = bufferUtil.concat(
+            this._deflate[kBuffers],
+            this._deflate[kTotalLength]
+          );
+          if (fin) {
+            data2 = new FastBuffer(data2.buffer, data2.byteOffset, data2.length - 4);
+          }
+          this._deflate[kCallback] = null;
+          this._deflate[kTotalLength] = 0;
+          this._deflate[kBuffers] = [];
+          if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+            this._deflate.reset();
+          }
+          callback(null, data2);
+        });
+      }
+    };
+    module2.exports = PerMessageDeflate;
+    function deflateOnData(chunk) {
+      this[kBuffers].push(chunk);
+      this[kTotalLength] += chunk.length;
+    }
+    function inflateOnData(chunk) {
+      this[kTotalLength] += chunk.length;
+      if (this[kPerMessageDeflate]._maxPayload < 1 || this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload) {
+        this[kBuffers].push(chunk);
+        return;
+      }
+      this[kError] = new RangeError("Max payload size exceeded");
+      this[kError].code = "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH";
+      this[kError][kStatusCode] = 1009;
+      this.removeListener("data", inflateOnData);
+      this.reset();
+    }
+    function inflateOnError(err) {
+      this[kPerMessageDeflate]._inflate = null;
+      if (this[kError]) {
+        this[kCallback](this[kError]);
+        return;
+      }
+      err[kStatusCode] = 1007;
+      this[kCallback](err);
+    }
+  }
+});
+
+// node_modules/ws/lib/validation.js
+var require_validation = __commonJS({
+  "node_modules/ws/lib/validation.js"(exports2, module2) {
+    "use strict";
+    var { isUtf8 } = require("buffer");
+    var { hasBlob } = require_constants();
+    var tokenChars = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      // 0 - 15
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      // 16 - 31
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      // 32 - 47
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      // 48 - 63
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      // 64 - 79
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      // 80 - 95
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      // 96 - 111
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0
+      // 112 - 127
+    ];
+    function isValidStatusCode(code) {
+      return code >= 1e3 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3e3 && code <= 4999;
+    }
+    function _isValidUTF8(buf) {
+      const len = buf.length;
+      let i = 0;
+      while (i < len) {
+        if ((buf[i] & 128) === 0) {
+          i++;
+        } else if ((buf[i] & 224) === 192) {
+          if (i + 1 === len || (buf[i + 1] & 192) !== 128 || (buf[i] & 254) === 192) {
+            return false;
+          }
+          i += 2;
+        } else if ((buf[i] & 240) === 224) {
+          if (i + 2 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || buf[i] === 224 && (buf[i + 1] & 224) === 128 || // Overlong
+          buf[i] === 237 && (buf[i + 1] & 224) === 160) {
+            return false;
+          }
+          i += 3;
+        } else if ((buf[i] & 248) === 240) {
+          if (i + 3 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || (buf[i + 3] & 192) !== 128 || buf[i] === 240 && (buf[i + 1] & 240) === 128 || // Overlong
+          buf[i] === 244 && buf[i + 1] > 143 || buf[i] > 244) {
+            return false;
+          }
+          i += 4;
+        } else {
+          return false;
+        }
+      }
+      return true;
+    }
+    function isBlob(value2) {
+      return hasBlob && typeof value2 === "object" && typeof value2.arrayBuffer === "function" && typeof value2.type === "string" && typeof value2.stream === "function" && (value2[Symbol.toStringTag] === "Blob" || value2[Symbol.toStringTag] === "File");
+    }
+    module2.exports = {
+      isBlob,
+      isValidStatusCode,
+      isValidUTF8: _isValidUTF8,
+      tokenChars
+    };
+    if (isUtf8) {
+      module2.exports.isValidUTF8 = function(buf) {
+        return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
+      };
+    } else if (!process.env.WS_NO_UTF_8_VALIDATE) {
+      try {
+        const isValidUTF8 = require("utf-8-validate");
+        module2.exports.isValidUTF8 = function(buf) {
+          return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8(buf);
+        };
+      } catch (e) {
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/receiver.js
+var require_receiver = __commonJS({
+  "node_modules/ws/lib/receiver.js"(exports2, module2) {
+    "use strict";
+    var { Writable } = require("stream");
+    var PerMessageDeflate = require_permessage_deflate();
+    var {
+      BINARY_TYPES,
+      EMPTY_BUFFER,
+      kStatusCode,
+      kWebSocket
+    } = require_constants();
+    var { concat, toArrayBuffer, unmask } = require_buffer_util();
+    var { isValidStatusCode, isValidUTF8 } = require_validation();
+    var FastBuffer = Buffer[Symbol.species];
+    var GET_INFO = 0;
+    var GET_PAYLOAD_LENGTH_16 = 1;
+    var GET_PAYLOAD_LENGTH_64 = 2;
+    var GET_MASK = 3;
+    var GET_DATA = 4;
+    var INFLATING = 5;
+    var DEFER_EVENT = 6;
+    var Receiver2 = class extends Writable {
+      /**
+       * Creates a Receiver instance.
+       *
+       * @param {Object} [options] Options object
+       * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+       *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+       *     multiple times in the same tick
+       * @param {String} [options.binaryType=nodebuffer] The type for binary data
+       * @param {Object} [options.extensions] An object containing the negotiated
+       *     extensions
+       * @param {Boolean} [options.isServer=false] Specifies whether to operate in
+       *     client or server mode
+       * @param {Number} [options.maxPayload=0] The maximum allowed message length
+       * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+       *     not to skip UTF-8 validation for text and close messages
+       */
+      constructor(options = {}) {
+        super();
+        this._allowSynchronousEvents = options.allowSynchronousEvents !== void 0 ? options.allowSynchronousEvents : true;
+        this._binaryType = options.binaryType || BINARY_TYPES[0];
+        this._extensions = options.extensions || {};
+        this._isServer = !!options.isServer;
+        this._maxPayload = options.maxPayload | 0;
+        this._skipUTF8Validation = !!options.skipUTF8Validation;
+        this[kWebSocket] = void 0;
+        this._bufferedBytes = 0;
+        this._buffers = [];
+        this._compressed = false;
+        this._payloadLength = 0;
+        this._mask = void 0;
+        this._fragmented = 0;
+        this._masked = false;
+        this._fin = false;
+        this._opcode = 0;
+        this._totalPayloadLength = 0;
+        this._messageLength = 0;
+        this._fragments = [];
+        this._errored = false;
+        this._loop = false;
+        this._state = GET_INFO;
+      }
+      /**
+       * Implements `Writable.prototype._write()`.
+       *
+       * @param {Buffer} chunk The chunk of data to write
+       * @param {String} encoding The character encoding of `chunk`
+       * @param {Function} cb Callback
+       * @private
+       */
+      _write(chunk, encoding, cb) {
+        if (this._opcode === 8 && this._state == GET_INFO)
+          return cb();
+        this._bufferedBytes += chunk.length;
+        this._buffers.push(chunk);
+        this.startLoop(cb);
+      }
+      /**
+       * Consumes `n` bytes from the buffered data.
+       *
+       * @param {Number} n The number of bytes to consume
+       * @return {Buffer} The consumed bytes
+       * @private
+       */
+      consume(n) {
+        this._bufferedBytes -= n;
+        if (n === this._buffers[0].length)
+          return this._buffers.shift();
+        if (n < this._buffers[0].length) {
+          const buf = this._buffers[0];
+          this._buffers[0] = new FastBuffer(
+            buf.buffer,
+            buf.byteOffset + n,
+            buf.length - n
+          );
+          return new FastBuffer(buf.buffer, buf.byteOffset, n);
+        }
+        const dst = Buffer.allocUnsafe(n);
+        do {
+          const buf = this._buffers[0];
+          const offset = dst.length - n;
+          if (n >= buf.length) {
+            dst.set(this._buffers.shift(), offset);
+          } else {
+            dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
+            this._buffers[0] = new FastBuffer(
+              buf.buffer,
+              buf.byteOffset + n,
+              buf.length - n
+            );
+          }
+          n -= buf.length;
+        } while (n > 0);
+        return dst;
+      }
+      /**
+       * Starts the parsing loop.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      startLoop(cb) {
+        this._loop = true;
+        do {
+          switch (this._state) {
+            case GET_INFO:
+              this.getInfo(cb);
+              break;
+            case GET_PAYLOAD_LENGTH_16:
+              this.getPayloadLength16(cb);
+              break;
+            case GET_PAYLOAD_LENGTH_64:
+              this.getPayloadLength64(cb);
+              break;
+            case GET_MASK:
+              this.getMask();
+              break;
+            case GET_DATA:
+              this.getData(cb);
+              break;
+            case INFLATING:
+            case DEFER_EVENT:
+              this._loop = false;
+              return;
+          }
+        } while (this._loop);
+        if (!this._errored)
+          cb();
+      }
+      /**
+       * Reads the first two bytes of a frame.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getInfo(cb) {
+        if (this._bufferedBytes < 2) {
+          this._loop = false;
+          return;
+        }
+        const buf = this.consume(2);
+        if ((buf[0] & 48) !== 0) {
+          const error35 = this.createError(
+            RangeError,
+            "RSV2 and RSV3 must be clear",
+            true,
+            1002,
+            "WS_ERR_UNEXPECTED_RSV_2_3"
+          );
+          cb(error35);
+          return;
+        }
+        const compressed = (buf[0] & 64) === 64;
+        if (compressed && !this._extensions[PerMessageDeflate.extensionName]) {
+          const error35 = this.createError(
+            RangeError,
+            "RSV1 must be clear",
+            true,
+            1002,
+            "WS_ERR_UNEXPECTED_RSV_1"
+          );
+          cb(error35);
+          return;
+        }
+        this._fin = (buf[0] & 128) === 128;
+        this._opcode = buf[0] & 15;
+        this._payloadLength = buf[1] & 127;
+        if (this._opcode === 0) {
+          if (compressed) {
+            const error35 = this.createError(
+              RangeError,
+              "RSV1 must be clear",
+              true,
+              1002,
+              "WS_ERR_UNEXPECTED_RSV_1"
+            );
+            cb(error35);
+            return;
+          }
+          if (!this._fragmented) {
+            const error35 = this.createError(
+              RangeError,
+              "invalid opcode 0",
+              true,
+              1002,
+              "WS_ERR_INVALID_OPCODE"
+            );
+            cb(error35);
+            return;
+          }
+          this._opcode = this._fragmented;
+        } else if (this._opcode === 1 || this._opcode === 2) {
+          if (this._fragmented) {
+            const error35 = this.createError(
+              RangeError,
+              `invalid opcode ${this._opcode}`,
+              true,
+              1002,
+              "WS_ERR_INVALID_OPCODE"
+            );
+            cb(error35);
+            return;
+          }
+          this._compressed = compressed;
+        } else if (this._opcode > 7 && this._opcode < 11) {
+          if (!this._fin) {
+            const error35 = this.createError(
+              RangeError,
+              "FIN must be set",
+              true,
+              1002,
+              "WS_ERR_EXPECTED_FIN"
+            );
+            cb(error35);
+            return;
+          }
+          if (compressed) {
+            const error35 = this.createError(
+              RangeError,
+              "RSV1 must be clear",
+              true,
+              1002,
+              "WS_ERR_UNEXPECTED_RSV_1"
+            );
+            cb(error35);
+            return;
+          }
+          if (this._payloadLength > 125 || this._opcode === 8 && this._payloadLength === 1) {
+            const error35 = this.createError(
+              RangeError,
+              `invalid payload length ${this._payloadLength}`,
+              true,
+              1002,
+              "WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH"
+            );
+            cb(error35);
+            return;
+          }
+        } else {
+          const error35 = this.createError(
+            RangeError,
+            `invalid opcode ${this._opcode}`,
+            true,
+            1002,
+            "WS_ERR_INVALID_OPCODE"
+          );
+          cb(error35);
+          return;
+        }
+        if (!this._fin && !this._fragmented)
+          this._fragmented = this._opcode;
+        this._masked = (buf[1] & 128) === 128;
+        if (this._isServer) {
+          if (!this._masked) {
+            const error35 = this.createError(
+              RangeError,
+              "MASK must be set",
+              true,
+              1002,
+              "WS_ERR_EXPECTED_MASK"
+            );
+            cb(error35);
+            return;
+          }
+        } else if (this._masked) {
+          const error35 = this.createError(
+            RangeError,
+            "MASK must be clear",
+            true,
+            1002,
+            "WS_ERR_UNEXPECTED_MASK"
+          );
+          cb(error35);
+          return;
+        }
+        if (this._payloadLength === 126)
+          this._state = GET_PAYLOAD_LENGTH_16;
+        else if (this._payloadLength === 127)
+          this._state = GET_PAYLOAD_LENGTH_64;
+        else
+          this.haveLength(cb);
+      }
+      /**
+       * Gets extended payload length (7+16).
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getPayloadLength16(cb) {
+        if (this._bufferedBytes < 2) {
+          this._loop = false;
+          return;
+        }
+        this._payloadLength = this.consume(2).readUInt16BE(0);
+        this.haveLength(cb);
+      }
+      /**
+       * Gets extended payload length (7+64).
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getPayloadLength64(cb) {
+        if (this._bufferedBytes < 8) {
+          this._loop = false;
+          return;
+        }
+        const buf = this.consume(8);
+        const num = buf.readUInt32BE(0);
+        if (num > Math.pow(2, 53 - 32) - 1) {
+          const error35 = this.createError(
+            RangeError,
+            "Unsupported WebSocket frame: payload length > 2^53 - 1",
+            false,
+            1009,
+            "WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH"
+          );
+          cb(error35);
+          return;
+        }
+        this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
+        this.haveLength(cb);
+      }
+      /**
+       * Payload length has been read.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      haveLength(cb) {
+        if (this._payloadLength && this._opcode < 8) {
+          this._totalPayloadLength += this._payloadLength;
+          if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
+            const error35 = this.createError(
+              RangeError,
+              "Max payload size exceeded",
+              false,
+              1009,
+              "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH"
+            );
+            cb(error35);
+            return;
+          }
+        }
+        if (this._masked)
+          this._state = GET_MASK;
+        else
+          this._state = GET_DATA;
+      }
+      /**
+       * Reads mask bytes.
+       *
+       * @private
+       */
+      getMask() {
+        if (this._bufferedBytes < 4) {
+          this._loop = false;
+          return;
+        }
+        this._mask = this.consume(4);
+        this._state = GET_DATA;
+      }
+      /**
+       * Reads data bytes.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      getData(cb) {
+        let data = EMPTY_BUFFER;
+        if (this._payloadLength) {
+          if (this._bufferedBytes < this._payloadLength) {
+            this._loop = false;
+            return;
+          }
+          data = this.consume(this._payloadLength);
+          if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) {
+            unmask(data, this._mask);
+          }
+        }
+        if (this._opcode > 7) {
+          this.controlMessage(data, cb);
+          return;
+        }
+        if (this._compressed) {
+          this._state = INFLATING;
+          this.decompress(data, cb);
+          return;
+        }
+        if (data.length) {
+          this._messageLength = this._totalPayloadLength;
+          this._fragments.push(data);
+        }
+        this.dataMessage(cb);
+      }
+      /**
+       * Decompresses data.
+       *
+       * @param {Buffer} data Compressed data
+       * @param {Function} cb Callback
+       * @private
+       */
+      decompress(data, cb) {
+        const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+        perMessageDeflate.decompress(data, this._fin, (err, buf) => {
+          if (err)
+            return cb(err);
+          if (buf.length) {
+            this._messageLength += buf.length;
+            if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
+              const error35 = this.createError(
+                RangeError,
+                "Max payload size exceeded",
+                false,
+                1009,
+                "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH"
+              );
+              cb(error35);
+              return;
+            }
+            this._fragments.push(buf);
+          }
+          this.dataMessage(cb);
+          if (this._state === GET_INFO)
+            this.startLoop(cb);
+        });
+      }
+      /**
+       * Handles a data message.
+       *
+       * @param {Function} cb Callback
+       * @private
+       */
+      dataMessage(cb) {
+        if (!this._fin) {
+          this._state = GET_INFO;
+          return;
+        }
+        const messageLength = this._messageLength;
+        const fragments = this._fragments;
+        this._totalPayloadLength = 0;
+        this._messageLength = 0;
+        this._fragmented = 0;
+        this._fragments = [];
+        if (this._opcode === 2) {
+          let data;
+          if (this._binaryType === "nodebuffer") {
+            data = concat(fragments, messageLength);
+          } else if (this._binaryType === "arraybuffer") {
+            data = toArrayBuffer(concat(fragments, messageLength));
+          } else if (this._binaryType === "blob") {
+            data = new Blob(fragments);
+          } else {
+            data = fragments;
+          }
+          if (this._allowSynchronousEvents) {
+            this.emit("message", data, true);
+            this._state = GET_INFO;
+          } else {
+            this._state = DEFER_EVENT;
+            setImmediate(() => {
+              this.emit("message", data, true);
+              this._state = GET_INFO;
+              this.startLoop(cb);
+            });
+          }
+        } else {
+          const buf = concat(fragments, messageLength);
+          if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+            const error35 = this.createError(
+              Error,
+              "invalid UTF-8 sequence",
+              true,
+              1007,
+              "WS_ERR_INVALID_UTF8"
+            );
+            cb(error35);
+            return;
+          }
+          if (this._state === INFLATING || this._allowSynchronousEvents) {
+            this.emit("message", buf, false);
+            this._state = GET_INFO;
+          } else {
+            this._state = DEFER_EVENT;
+            setImmediate(() => {
+              this.emit("message", buf, false);
+              this._state = GET_INFO;
+              this.startLoop(cb);
+            });
+          }
+        }
+      }
+      /**
+       * Handles a control message.
+       *
+       * @param {Buffer} data Data to handle
+       * @return {(Error|RangeError|undefined)} A possible error
+       * @private
+       */
+      controlMessage(data, cb) {
+        if (this._opcode === 8) {
+          if (data.length === 0) {
+            this._loop = false;
+            this.emit("conclude", 1005, EMPTY_BUFFER);
+            this.end();
+          } else {
+            const code = data.readUInt16BE(0);
+            if (!isValidStatusCode(code)) {
+              const error35 = this.createError(
+                RangeError,
+                `invalid status code ${code}`,
+                true,
+                1002,
+                "WS_ERR_INVALID_CLOSE_CODE"
+              );
+              cb(error35);
+              return;
+            }
+            const buf = new FastBuffer(
+              data.buffer,
+              data.byteOffset + 2,
+              data.length - 2
+            );
+            if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+              const error35 = this.createError(
+                Error,
+                "invalid UTF-8 sequence",
+                true,
+                1007,
+                "WS_ERR_INVALID_UTF8"
+              );
+              cb(error35);
+              return;
+            }
+            this._loop = false;
+            this.emit("conclude", code, buf);
+            this.end();
+          }
+          this._state = GET_INFO;
+          return;
+        }
+        if (this._allowSynchronousEvents) {
+          this.emit(this._opcode === 9 ? "ping" : "pong", data);
+          this._state = GET_INFO;
+        } else {
+          this._state = DEFER_EVENT;
+          setImmediate(() => {
+            this.emit(this._opcode === 9 ? "ping" : "pong", data);
+            this._state = GET_INFO;
+            this.startLoop(cb);
+          });
+        }
+      }
+      /**
+       * Builds an error object.
+       *
+       * @param {function(new:Error|RangeError)} ErrorCtor The error constructor
+       * @param {String} message The error message
+       * @param {Boolean} prefix Specifies whether or not to add a default prefix to
+       *     `message`
+       * @param {Number} statusCode The status code
+       * @param {String} errorCode The exposed error code
+       * @return {(Error|RangeError)} The error
+       * @private
+       */
+      createError(ErrorCtor, message, prefix, statusCode, errorCode) {
+        this._loop = false;
+        this._errored = true;
+        const err = new ErrorCtor(
+          prefix ? `Invalid WebSocket frame: ${message}` : message
+        );
+        Error.captureStackTrace(err, this.createError);
+        err.code = errorCode;
+        err[kStatusCode] = statusCode;
+        return err;
+      }
+    };
+    module2.exports = Receiver2;
+  }
+});
+
+// node_modules/ws/lib/sender.js
+var require_sender = __commonJS({
+  "node_modules/ws/lib/sender.js"(exports2, module2) {
+    "use strict";
+    var { Duplex } = require("stream");
+    var { randomFillSync } = require("crypto");
+    var PerMessageDeflate = require_permessage_deflate();
+    var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
+    var { isBlob, isValidStatusCode } = require_validation();
+    var { mask: applyMask, toBuffer } = require_buffer_util();
+    var kByteLength = Symbol("kByteLength");
+    var maskBuffer = Buffer.alloc(4);
+    var RANDOM_POOL_SIZE = 8 * 1024;
+    var randomPool;
+    var randomPoolPointer = RANDOM_POOL_SIZE;
+    var DEFAULT = 0;
+    var DEFLATING = 1;
+    var GET_BLOB_DATA = 2;
+    var Sender2 = class _Sender {
+      /**
+       * Creates a Sender instance.
+       *
+       * @param {Duplex} socket The connection socket
+       * @param {Object} [extensions] An object containing the negotiated extensions
+       * @param {Function} [generateMask] The function used to generate the masking
+       *     key
+       */
+      constructor(socket, extensions, generateMask) {
+        this._extensions = extensions || {};
+        if (generateMask) {
+          this._generateMask = generateMask;
+          this._maskBuffer = Buffer.alloc(4);
+        }
+        this._socket = socket;
+        this._firstFragment = true;
+        this._compress = false;
+        this._bufferedBytes = 0;
+        this._queue = [];
+        this._state = DEFAULT;
+        this.onerror = NOOP;
+        this[kWebSocket] = void 0;
+      }
+      /**
+       * Frames a piece of data according to the HyBi WebSocket protocol.
+       *
+       * @param {(Buffer|String)} data The data to frame
+       * @param {Object} options Options object
+       * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+       *     FIN bit
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+       *     key
+       * @param {Number} options.opcode The opcode
+       * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+       *     modified
+       * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+       *     RSV1 bit
+       * @return {(Buffer|String)[]} The framed data
+       * @public
+       */
+      static frame(data, options) {
+        let mask;
+        let merge2 = false;
+        let offset = 2;
+        let skipMasking = false;
+        if (options.mask) {
+          mask = options.maskBuffer || maskBuffer;
+          if (options.generateMask) {
+            options.generateMask(mask);
+          } else {
+            if (randomPoolPointer === RANDOM_POOL_SIZE) {
+              if (randomPool === void 0) {
+                randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
+              }
+              randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
+              randomPoolPointer = 0;
+            }
+            mask[0] = randomPool[randomPoolPointer++];
+            mask[1] = randomPool[randomPoolPointer++];
+            mask[2] = randomPool[randomPoolPointer++];
+            mask[3] = randomPool[randomPoolPointer++];
+          }
+          skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
+          offset = 6;
+        }
+        let dataLength;
+        if (typeof data === "string") {
+          if ((!options.mask || skipMasking) && options[kByteLength] !== void 0) {
+            dataLength = options[kByteLength];
+          } else {
+            data = Buffer.from(data);
+            dataLength = data.length;
+          }
+        } else {
+          dataLength = data.length;
+          merge2 = options.mask && options.readOnly && !skipMasking;
+        }
+        let payloadLength = dataLength;
+        if (dataLength >= 65536) {
+          offset += 8;
+          payloadLength = 127;
+        } else if (dataLength > 125) {
+          offset += 2;
+          payloadLength = 126;
+        }
+        const target = Buffer.allocUnsafe(merge2 ? dataLength + offset : offset);
+        target[0] = options.fin ? options.opcode | 128 : options.opcode;
+        if (options.rsv1)
+          target[0] |= 64;
+        target[1] = payloadLength;
+        if (payloadLength === 126) {
+          target.writeUInt16BE(dataLength, 2);
+        } else if (payloadLength === 127) {
+          target[2] = target[3] = 0;
+          target.writeUIntBE(dataLength, 4, 6);
+        }
+        if (!options.mask)
+          return [target, data];
+        target[1] |= 128;
+        target[offset - 4] = mask[0];
+        target[offset - 3] = mask[1];
+        target[offset - 2] = mask[2];
+        target[offset - 1] = mask[3];
+        if (skipMasking)
+          return [target, data];
+        if (merge2) {
+          applyMask(data, mask, target, offset, dataLength);
+          return [target];
+        }
+        applyMask(data, mask, data, 0, dataLength);
+        return [target, data];
+      }
+      /**
+       * Sends a close message to the other peer.
+       *
+       * @param {Number} [code] The status code component of the body
+       * @param {(String|Buffer)} [data] The message component of the body
+       * @param {Boolean} [mask=false] Specifies whether or not to mask the message
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      close(code, data, mask, cb) {
+        let buf;
+        if (code === void 0) {
+          buf = EMPTY_BUFFER;
+        } else if (typeof code !== "number" || !isValidStatusCode(code)) {
+          throw new TypeError("First argument must be a valid error code number");
+        } else if (data === void 0 || !data.length) {
+          buf = Buffer.allocUnsafe(2);
+          buf.writeUInt16BE(code, 0);
+        } else {
+          const length = Buffer.byteLength(data);
+          if (length > 123) {
+            throw new RangeError("The message must not be greater than 123 bytes");
+          }
+          buf = Buffer.allocUnsafe(2 + length);
+          buf.writeUInt16BE(code, 0);
+          if (typeof data === "string") {
+            buf.write(data, 2);
+          } else {
+            buf.set(data, 2);
+          }
+        }
+        const options = {
+          [kByteLength]: buf.length,
+          fin: true,
+          generateMask: this._generateMask,
+          mask,
+          maskBuffer: this._maskBuffer,
+          opcode: 8,
+          readOnly: false,
+          rsv1: false
+        };
+        if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, buf, false, options, cb]);
+        } else {
+          this.sendFrame(_Sender.frame(buf, options), cb);
+        }
+      }
+      /**
+       * Sends a ping message to the other peer.
+       *
+       * @param {*} data The message to send
+       * @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      ping(data, mask, cb) {
+        let byteLength;
+        let readOnly;
+        if (typeof data === "string") {
+          byteLength = Buffer.byteLength(data);
+          readOnly = false;
+        } else if (isBlob(data)) {
+          byteLength = data.size;
+          readOnly = false;
+        } else {
+          data = toBuffer(data);
+          byteLength = data.length;
+          readOnly = toBuffer.readOnly;
+        }
+        if (byteLength > 125) {
+          throw new RangeError("The data size must not be greater than 125 bytes");
+        }
+        const options = {
+          [kByteLength]: byteLength,
+          fin: true,
+          generateMask: this._generateMask,
+          mask,
+          maskBuffer: this._maskBuffer,
+          opcode: 9,
+          readOnly,
+          rsv1: false
+        };
+        if (isBlob(data)) {
+          if (this._state !== DEFAULT) {
+            this.enqueue([this.getBlobData, data, false, options, cb]);
+          } else {
+            this.getBlobData(data, false, options, cb);
+          }
+        } else if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, data, false, options, cb]);
+        } else {
+          this.sendFrame(_Sender.frame(data, options), cb);
+        }
+      }
+      /**
+       * Sends a pong message to the other peer.
+       *
+       * @param {*} data The message to send
+       * @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      pong(data, mask, cb) {
+        let byteLength;
+        let readOnly;
+        if (typeof data === "string") {
+          byteLength = Buffer.byteLength(data);
+          readOnly = false;
+        } else if (isBlob(data)) {
+          byteLength = data.size;
+          readOnly = false;
+        } else {
+          data = toBuffer(data);
+          byteLength = data.length;
+          readOnly = toBuffer.readOnly;
+        }
+        if (byteLength > 125) {
+          throw new RangeError("The data size must not be greater than 125 bytes");
+        }
+        const options = {
+          [kByteLength]: byteLength,
+          fin: true,
+          generateMask: this._generateMask,
+          mask,
+          maskBuffer: this._maskBuffer,
+          opcode: 10,
+          readOnly,
+          rsv1: false
+        };
+        if (isBlob(data)) {
+          if (this._state !== DEFAULT) {
+            this.enqueue([this.getBlobData, data, false, options, cb]);
+          } else {
+            this.getBlobData(data, false, options, cb);
+          }
+        } else if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, data, false, options, cb]);
+        } else {
+          this.sendFrame(_Sender.frame(data, options), cb);
+        }
+      }
+      /**
+       * Sends a data message to the other peer.
+       *
+       * @param {*} data The message to send
+       * @param {Object} options Options object
+       * @param {Boolean} [options.binary=false] Specifies whether `data` is binary
+       *     or text
+       * @param {Boolean} [options.compress=false] Specifies whether or not to
+       *     compress `data`
+       * @param {Boolean} [options.fin=false] Specifies whether the fragment is the
+       *     last one
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Function} [cb] Callback
+       * @public
+       */
+      send(data, options, cb) {
+        const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+        let opcode = options.binary ? 2 : 1;
+        let rsv1 = options.compress;
+        let byteLength;
+        let readOnly;
+        if (typeof data === "string") {
+          byteLength = Buffer.byteLength(data);
+          readOnly = false;
+        } else if (isBlob(data)) {
+          byteLength = data.size;
+          readOnly = false;
+        } else {
+          data = toBuffer(data);
+          byteLength = data.length;
+          readOnly = toBuffer.readOnly;
+        }
+        if (this._firstFragment) {
+          this._firstFragment = false;
+          if (rsv1 && perMessageDeflate && perMessageDeflate.params[perMessageDeflate._isServer ? "server_no_context_takeover" : "client_no_context_takeover"]) {
+            rsv1 = byteLength >= perMessageDeflate._threshold;
+          }
+          this._compress = rsv1;
+        } else {
+          rsv1 = false;
+          opcode = 0;
+        }
+        if (options.fin)
+          this._firstFragment = true;
+        const opts = {
+          [kByteLength]: byteLength,
+          fin: options.fin,
+          generateMask: this._generateMask,
+          mask: options.mask,
+          maskBuffer: this._maskBuffer,
+          opcode,
+          readOnly,
+          rsv1
+        };
+        if (isBlob(data)) {
+          if (this._state !== DEFAULT) {
+            this.enqueue([this.getBlobData, data, this._compress, opts, cb]);
+          } else {
+            this.getBlobData(data, this._compress, opts, cb);
+          }
+        } else if (this._state !== DEFAULT) {
+          this.enqueue([this.dispatch, data, this._compress, opts, cb]);
+        } else {
+          this.dispatch(data, this._compress, opts, cb);
+        }
+      }
+      /**
+       * Gets the contents of a blob as binary data.
+       *
+       * @param {Blob} blob The blob
+       * @param {Boolean} [compress=false] Specifies whether or not to compress
+       *     the data
+       * @param {Object} options Options object
+       * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+       *     FIN bit
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+       *     key
+       * @param {Number} options.opcode The opcode
+       * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+       *     modified
+       * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+       *     RSV1 bit
+       * @param {Function} [cb] Callback
+       * @private
+       */
+      getBlobData(blob, compress, options, cb) {
+        this._bufferedBytes += options[kByteLength];
+        this._state = GET_BLOB_DATA;
+        blob.arrayBuffer().then((arrayBuffer) => {
+          if (this._socket.destroyed) {
+            const err = new Error(
+              "The socket was closed while the blob was being read"
+            );
+            process.nextTick(callCallbacks, this, err, cb);
+            return;
+          }
+          this._bufferedBytes -= options[kByteLength];
+          const data = toBuffer(arrayBuffer);
+          if (!compress) {
+            this._state = DEFAULT;
+            this.sendFrame(_Sender.frame(data, options), cb);
+            this.dequeue();
+          } else {
+            this.dispatch(data, compress, options, cb);
+          }
+        }).catch((err) => {
+          process.nextTick(onError, this, err, cb);
+        });
+      }
+      /**
+       * Dispatches a message.
+       *
+       * @param {(Buffer|String)} data The message to send
+       * @param {Boolean} [compress=false] Specifies whether or not to compress
+       *     `data`
+       * @param {Object} options Options object
+       * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+       *     FIN bit
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+       *     `data`
+       * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+       *     key
+       * @param {Number} options.opcode The opcode
+       * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+       *     modified
+       * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+       *     RSV1 bit
+       * @param {Function} [cb] Callback
+       * @private
+       */
+      dispatch(data, compress, options, cb) {
+        if (!compress) {
+          this.sendFrame(_Sender.frame(data, options), cb);
+          return;
+        }
+        const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+        this._bufferedBytes += options[kByteLength];
+        this._state = DEFLATING;
+        perMessageDeflate.compress(data, options.fin, (_, buf) => {
+          if (this._socket.destroyed) {
+            const err = new Error(
+              "The socket was closed while data was being compressed"
+            );
+            callCallbacks(this, err, cb);
+            return;
+          }
+          this._bufferedBytes -= options[kByteLength];
+          this._state = DEFAULT;
+          options.readOnly = false;
+          this.sendFrame(_Sender.frame(buf, options), cb);
+          this.dequeue();
+        });
+      }
+      /**
+       * Executes queued send operations.
+       *
+       * @private
+       */
+      dequeue() {
+        while (this._state === DEFAULT && this._queue.length) {
+          const params = this._queue.shift();
+          this._bufferedBytes -= params[3][kByteLength];
+          Reflect.apply(params[0], this, params.slice(1));
+        }
+      }
+      /**
+       * Enqueues a send operation.
+       *
+       * @param {Array} params Send operation parameters.
+       * @private
+       */
+      enqueue(params) {
+        this._bufferedBytes += params[3][kByteLength];
+        this._queue.push(params);
+      }
+      /**
+       * Sends a frame.
+       *
+       * @param {(Buffer | String)[]} list The frame to send
+       * @param {Function} [cb] Callback
+       * @private
+       */
+      sendFrame(list, cb) {
+        if (list.length === 2) {
+          this._socket.cork();
+          this._socket.write(list[0]);
+          this._socket.write(list[1], cb);
+          this._socket.uncork();
+        } else {
+          this._socket.write(list[0], cb);
+        }
+      }
+    };
+    module2.exports = Sender2;
+    function callCallbacks(sender, err, cb) {
+      if (typeof cb === "function")
+        cb(err);
+      for (let i = 0; i < sender._queue.length; i++) {
+        const params = sender._queue[i];
+        const callback = params[params.length - 1];
+        if (typeof callback === "function")
+          callback(err);
+      }
+    }
+    function onError(sender, err, cb) {
+      callCallbacks(sender, err, cb);
+      sender.onerror(err);
+    }
+  }
+});
+
+// node_modules/ws/lib/event-target.js
+var require_event_target = __commonJS({
+  "node_modules/ws/lib/event-target.js"(exports2, module2) {
+    "use strict";
+    var { kForOnEventAttribute, kListener } = require_constants();
+    var kCode = Symbol("kCode");
+    var kData = Symbol("kData");
+    var kError = Symbol("kError");
+    var kMessage = Symbol("kMessage");
+    var kReason = Symbol("kReason");
+    var kTarget = Symbol("kTarget");
+    var kType = Symbol("kType");
+    var kWasClean = Symbol("kWasClean");
+    var Event = class {
+      /**
+       * Create a new `Event`.
+       *
+       * @param {String} type The name of the event
+       * @throws {TypeError} If the `type` argument is not specified
+       */
+      constructor(type) {
+        this[kTarget] = null;
+        this[kType] = type;
+      }
+      /**
+       * @type {*}
+       */
+      get target() {
+        return this[kTarget];
+      }
+      /**
+       * @type {String}
+       */
+      get type() {
+        return this[kType];
+      }
+    };
+    Object.defineProperty(Event.prototype, "target", { enumerable: true });
+    Object.defineProperty(Event.prototype, "type", { enumerable: true });
+    var CloseEvent = class extends Event {
+      /**
+       * Create a new `CloseEvent`.
+       *
+       * @param {String} type The name of the event
+       * @param {Object} [options] A dictionary object that allows for setting
+       *     attributes via object members of the same name
+       * @param {Number} [options.code=0] The status code explaining why the
+       *     connection was closed
+       * @param {String} [options.reason=''] A human-readable string explaining why
+       *     the connection was closed
+       * @param {Boolean} [options.wasClean=false] Indicates whether or not the
+       *     connection was cleanly closed
+       */
+      constructor(type, options = {}) {
+        super(type);
+        this[kCode] = options.code === void 0 ? 0 : options.code;
+        this[kReason] = options.reason === void 0 ? "" : options.reason;
+        this[kWasClean] = options.wasClean === void 0 ? false : options.wasClean;
+      }
+      /**
+       * @type {Number}
+       */
+      get code() {
+        return this[kCode];
+      }
+      /**
+       * @type {String}
+       */
+      get reason() {
+        return this[kReason];
+      }
+      /**
+       * @type {Boolean}
+       */
+      get wasClean() {
+        return this[kWasClean];
+      }
+    };
+    Object.defineProperty(CloseEvent.prototype, "code", { enumerable: true });
+    Object.defineProperty(CloseEvent.prototype, "reason", { enumerable: true });
+    Object.defineProperty(CloseEvent.prototype, "wasClean", { enumerable: true });
+    var ErrorEvent = class extends Event {
+      /**
+       * Create a new `ErrorEvent`.
+       *
+       * @param {String} type The name of the event
+       * @param {Object} [options] A dictionary object that allows for setting
+       *     attributes via object members of the same name
+       * @param {*} [options.error=null] The error that generated this event
+       * @param {String} [options.message=''] The error message
+       */
+      constructor(type, options = {}) {
+        super(type);
+        this[kError] = options.error === void 0 ? null : options.error;
+        this[kMessage] = options.message === void 0 ? "" : options.message;
+      }
+      /**
+       * @type {*}
+       */
+      get error() {
+        return this[kError];
+      }
+      /**
+       * @type {String}
+       */
+      get message() {
+        return this[kMessage];
+      }
+    };
+    Object.defineProperty(ErrorEvent.prototype, "error", { enumerable: true });
+    Object.defineProperty(ErrorEvent.prototype, "message", { enumerable: true });
+    var MessageEvent = class extends Event {
+      /**
+       * Create a new `MessageEvent`.
+       *
+       * @param {String} type The name of the event
+       * @param {Object} [options] A dictionary object that allows for setting
+       *     attributes via object members of the same name
+       * @param {*} [options.data=null] The message content
+       */
+      constructor(type, options = {}) {
+        super(type);
+        this[kData] = options.data === void 0 ? null : options.data;
+      }
+      /**
+       * @type {*}
+       */
+      get data() {
+        return this[kData];
+      }
+    };
+    Object.defineProperty(MessageEvent.prototype, "data", { enumerable: true });
+    var EventTarget = {
+      /**
+       * Register an event listener.
+       *
+       * @param {String} type A string representing the event type to listen for
+       * @param {(Function|Object)} handler The listener to add
+       * @param {Object} [options] An options object specifies characteristics about
+       *     the event listener
+       * @param {Boolean} [options.once=false] A `Boolean` indicating that the
+       *     listener should be invoked at most once after being added. If `true`,
+       *     the listener would be automatically removed when invoked.
+       * @public
+       */
+      addEventListener(type, handler, options = {}) {
+        for (const listener of this.listeners(type)) {
+          if (!options[kForOnEventAttribute] && listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+            return;
+          }
+        }
+        let wrapper;
+        if (type === "message") {
+          wrapper = function onMessage(data, isBinary) {
+            const event = new MessageEvent("message", {
+              data: isBinary ? data : data.toString()
+            });
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else if (type === "close") {
+          wrapper = function onClose(code, message) {
+            const event = new CloseEvent("close", {
+              code,
+              reason: message.toString(),
+              wasClean: this._closeFrameReceived && this._closeFrameSent
+            });
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else if (type === "error") {
+          wrapper = function onError(error35) {
+            const event = new ErrorEvent("error", {
+              error: error35,
+              message: error35.message
+            });
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else if (type === "open") {
+          wrapper = function onOpen() {
+            const event = new Event("open");
+            event[kTarget] = this;
+            callListener(handler, this, event);
+          };
+        } else {
+          return;
+        }
+        wrapper[kForOnEventAttribute] = !!options[kForOnEventAttribute];
+        wrapper[kListener] = handler;
+        if (options.once) {
+          this.once(type, wrapper);
+        } else {
+          this.on(type, wrapper);
+        }
+      },
+      /**
+       * Remove an event listener.
+       *
+       * @param {String} type A string representing the event type to remove
+       * @param {(Function|Object)} handler The listener to remove
+       * @public
+       */
+      removeEventListener(type, handler) {
+        for (const listener of this.listeners(type)) {
+          if (listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+            this.removeListener(type, listener);
+            break;
+          }
+        }
+      }
+    };
+    module2.exports = {
+      CloseEvent,
+      ErrorEvent,
+      Event,
+      EventTarget,
+      MessageEvent
+    };
+    function callListener(listener, thisArg, event) {
+      if (typeof listener === "object" && listener.handleEvent) {
+        listener.handleEvent.call(listener, event);
+      } else {
+        listener.call(thisArg, event);
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/extension.js
+var require_extension = __commonJS({
+  "node_modules/ws/lib/extension.js"(exports2, module2) {
+    "use strict";
+    var { tokenChars } = require_validation();
+    function push(dest, name, elem) {
+      if (dest[name] === void 0)
+        dest[name] = [elem];
+      else
+        dest[name].push(elem);
+    }
+    function parse3(header) {
+      const offers = /* @__PURE__ */ Object.create(null);
+      let params = /* @__PURE__ */ Object.create(null);
+      let mustUnescape = false;
+      let isEscaping = false;
+      let inQuotes = false;
+      let extensionName;
+      let paramName;
+      let start = -1;
+      let code = -1;
+      let end = -1;
+      let i = 0;
+      for (; i < header.length; i++) {
+        code = header.charCodeAt(i);
+        if (extensionName === void 0) {
+          if (end === -1 && tokenChars[code] === 1) {
+            if (start === -1)
+              start = i;
+          } else if (i !== 0 && (code === 32 || code === 9)) {
+            if (end === -1 && start !== -1)
+              end = i;
+          } else if (code === 59 || code === 44) {
+            if (start === -1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (end === -1)
+              end = i;
+            const name = header.slice(start, end);
+            if (code === 44) {
+              push(offers, name, params);
+              params = /* @__PURE__ */ Object.create(null);
+            } else {
+              extensionName = name;
+            }
+            start = end = -1;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        } else if (paramName === void 0) {
+          if (end === -1 && tokenChars[code] === 1) {
+            if (start === -1)
+              start = i;
+          } else if (code === 32 || code === 9) {
+            if (end === -1 && start !== -1)
+              end = i;
+          } else if (code === 59 || code === 44) {
+            if (start === -1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (end === -1)
+              end = i;
+            push(params, header.slice(start, end), true);
+            if (code === 44) {
+              push(offers, extensionName, params);
+              params = /* @__PURE__ */ Object.create(null);
+              extensionName = void 0;
+            }
+            start = end = -1;
+          } else if (code === 61 && start !== -1 && end === -1) {
+            paramName = header.slice(start, i);
+            start = end = -1;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        } else {
+          if (isEscaping) {
+            if (tokenChars[code] !== 1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (start === -1)
+              start = i;
+            else if (!mustUnescape)
+              mustUnescape = true;
+            isEscaping = false;
+          } else if (inQuotes) {
+            if (tokenChars[code] === 1) {
+              if (start === -1)
+                start = i;
+            } else if (code === 34 && start !== -1) {
+              inQuotes = false;
+              end = i;
+            } else if (code === 92) {
+              isEscaping = true;
+            } else {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+          } else if (code === 34 && header.charCodeAt(i - 1) === 61) {
+            inQuotes = true;
+          } else if (end === -1 && tokenChars[code] === 1) {
+            if (start === -1)
+              start = i;
+          } else if (start !== -1 && (code === 32 || code === 9)) {
+            if (end === -1)
+              end = i;
+          } else if (code === 59 || code === 44) {
+            if (start === -1) {
+              throw new SyntaxError(`Unexpected character at index ${i}`);
+            }
+            if (end === -1)
+              end = i;
+            let value2 = header.slice(start, end);
+            if (mustUnescape) {
+              value2 = value2.replace(/\\/g, "");
+              mustUnescape = false;
+            }
+            push(params, paramName, value2);
+            if (code === 44) {
+              push(offers, extensionName, params);
+              params = /* @__PURE__ */ Object.create(null);
+              extensionName = void 0;
+            }
+            paramName = void 0;
+            start = end = -1;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        }
+      }
+      if (start === -1 || inQuotes || code === 32 || code === 9) {
+        throw new SyntaxError("Unexpected end of input");
+      }
+      if (end === -1)
+        end = i;
+      const token = header.slice(start, end);
+      if (extensionName === void 0) {
+        push(offers, token, params);
+      } else {
+        if (paramName === void 0) {
+          push(params, token, true);
+        } else if (mustUnescape) {
+          push(params, paramName, token.replace(/\\/g, ""));
+        } else {
+          push(params, paramName, token);
+        }
+        push(offers, extensionName, params);
+      }
+      return offers;
+    }
+    function format(extensions) {
+      return Object.keys(extensions).map((extension) => {
+        let configurations = extensions[extension];
+        if (!Array.isArray(configurations))
+          configurations = [configurations];
+        return configurations.map((params) => {
+          return [extension].concat(
+            Object.keys(params).map((k) => {
+              let values = params[k];
+              if (!Array.isArray(values))
+                values = [values];
+              return values.map((v) => v === true ? k : `${k}=${v}`).join("; ");
+            })
+          ).join("; ");
+        }).join(", ");
+      }).join(", ");
+    }
+    module2.exports = { format, parse: parse3 };
+  }
+});
+
+// node_modules/ws/lib/websocket.js
+var require_websocket = __commonJS({
+  "node_modules/ws/lib/websocket.js"(exports2, module2) {
+    "use strict";
+    var EventEmitter = require("events");
+    var https = require("https");
+    var http = require("http");
+    var net = require("net");
+    var tls = require("tls");
+    var { randomBytes, createHash } = require("crypto");
+    var { Duplex, Readable } = require("stream");
+    var { URL: URL2 } = require("url");
+    var PerMessageDeflate = require_permessage_deflate();
+    var Receiver2 = require_receiver();
+    var Sender2 = require_sender();
+    var { isBlob } = require_validation();
+    var {
+      BINARY_TYPES,
+      EMPTY_BUFFER,
+      GUID,
+      kForOnEventAttribute,
+      kListener,
+      kStatusCode,
+      kWebSocket,
+      NOOP
+    } = require_constants();
+    var {
+      EventTarget: { addEventListener, removeEventListener }
+    } = require_event_target();
+    var { format, parse: parse3 } = require_extension();
+    var { toBuffer } = require_buffer_util();
+    var closeTimeout = 30 * 1e3;
+    var kAborted = Symbol("kAborted");
+    var protocolVersions = [8, 13];
+    var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+    var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
+    var WebSocket2 = class _WebSocket extends EventEmitter {
+      /**
+       * Create a new `WebSocket`.
+       *
+       * @param {(String|URL)} address The URL to which to connect
+       * @param {(String|String[])} [protocols] The subprotocols
+       * @param {Object} [options] Connection options
+       */
+      constructor(address, protocols, options) {
+        super();
+        this._binaryType = BINARY_TYPES[0];
+        this._closeCode = 1006;
+        this._closeFrameReceived = false;
+        this._closeFrameSent = false;
+        this._closeMessage = EMPTY_BUFFER;
+        this._closeTimer = null;
+        this._errorEmitted = false;
+        this._extensions = {};
+        this._paused = false;
+        this._protocol = "";
+        this._readyState = _WebSocket.CONNECTING;
+        this._receiver = null;
+        this._sender = null;
+        this._socket = null;
+        if (address !== null) {
+          this._bufferedAmount = 0;
+          this._isServer = false;
+          this._redirects = 0;
+          if (protocols === void 0) {
+            protocols = [];
+          } else if (!Array.isArray(protocols)) {
+            if (typeof protocols === "object" && protocols !== null) {
+              options = protocols;
+              protocols = [];
+            } else {
+              protocols = [protocols];
+            }
+          }
+          initAsClient(this, address, protocols, options);
+        } else {
+          this._autoPong = options.autoPong;
+          this._isServer = true;
+        }
+      }
+      /**
+       * For historical reasons, the custom "nodebuffer" type is used by the default
+       * instead of "blob".
+       *
+       * @type {String}
+       */
+      get binaryType() {
+        return this._binaryType;
+      }
+      set binaryType(type) {
+        if (!BINARY_TYPES.includes(type))
+          return;
+        this._binaryType = type;
+        if (this._receiver)
+          this._receiver._binaryType = type;
+      }
+      /**
+       * @type {Number}
+       */
+      get bufferedAmount() {
+        if (!this._socket)
+          return this._bufferedAmount;
+        return this._socket._writableState.length + this._sender._bufferedBytes;
+      }
+      /**
+       * @type {String}
+       */
+      get extensions() {
+        return Object.keys(this._extensions).join();
+      }
+      /**
+       * @type {Boolean}
+       */
+      get isPaused() {
+        return this._paused;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onclose() {
+        return null;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onerror() {
+        return null;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onopen() {
+        return null;
+      }
+      /**
+       * @type {Function}
+       */
+      /* istanbul ignore next */
+      get onmessage() {
+        return null;
+      }
+      /**
+       * @type {String}
+       */
+      get protocol() {
+        return this._protocol;
+      }
+      /**
+       * @type {Number}
+       */
+      get readyState() {
+        return this._readyState;
+      }
+      /**
+       * @type {String}
+       */
+      get url() {
+        return this._url;
+      }
+      /**
+       * Set up the socket and the internal resources.
+       *
+       * @param {Duplex} socket The network socket between the server and client
+       * @param {Buffer} head The first packet of the upgraded stream
+       * @param {Object} options Options object
+       * @param {Boolean} [options.allowSynchronousEvents=false] Specifies whether
+       *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+       *     multiple times in the same tick
+       * @param {Function} [options.generateMask] The function used to generate the
+       *     masking key
+       * @param {Number} [options.maxPayload=0] The maximum allowed message size
+       * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+       *     not to skip UTF-8 validation for text and close messages
+       * @private
+       */
+      setSocket(socket, head, options) {
+        const receiver = new Receiver2({
+          allowSynchronousEvents: options.allowSynchronousEvents,
+          binaryType: this.binaryType,
+          extensions: this._extensions,
+          isServer: this._isServer,
+          maxPayload: options.maxPayload,
+          skipUTF8Validation: options.skipUTF8Validation
+        });
+        const sender = new Sender2(socket, this._extensions, options.generateMask);
+        this._receiver = receiver;
+        this._sender = sender;
+        this._socket = socket;
+        receiver[kWebSocket] = this;
+        sender[kWebSocket] = this;
+        socket[kWebSocket] = this;
+        receiver.on("conclude", receiverOnConclude);
+        receiver.on("drain", receiverOnDrain);
+        receiver.on("error", receiverOnError);
+        receiver.on("message", receiverOnMessage);
+        receiver.on("ping", receiverOnPing);
+        receiver.on("pong", receiverOnPong);
+        sender.onerror = senderOnError;
+        if (socket.setTimeout)
+          socket.setTimeout(0);
+        if (socket.setNoDelay)
+          socket.setNoDelay();
+        if (head.length > 0)
+          socket.unshift(head);
+        socket.on("close", socketOnClose);
+        socket.on("data", socketOnData);
+        socket.on("end", socketOnEnd);
+        socket.on("error", socketOnError);
+        this._readyState = _WebSocket.OPEN;
+        this.emit("open");
+      }
+      /**
+       * Emit the `'close'` event.
+       *
+       * @private
+       */
+      emitClose() {
+        if (!this._socket) {
+          this._readyState = _WebSocket.CLOSED;
+          this.emit("close", this._closeCode, this._closeMessage);
+          return;
+        }
+        if (this._extensions[PerMessageDeflate.extensionName]) {
+          this._extensions[PerMessageDeflate.extensionName].cleanup();
+        }
+        this._receiver.removeAllListeners();
+        this._readyState = _WebSocket.CLOSED;
+        this.emit("close", this._closeCode, this._closeMessage);
+      }
+      /**
+       * Start a closing handshake.
+       *
+       *          +----------+   +-----------+   +----------+
+       *     - - -|ws.close()|-->|close frame|-->|ws.close()|- - -
+       *    |     +----------+   +-----------+   +----------+     |
+       *          +----------+   +-----------+         |
+       * CLOSING  |ws.close()|<--|close frame|<--+-----+       CLOSING
+       *          +----------+   +-----------+   |
+       *    |           |                        |   +---+        |
+       *                +------------------------+-->|fin| - - - -
+       *    |         +---+                      |   +---+
+       *     - - - - -|fin|<---------------------+
+       *              +---+
+       *
+       * @param {Number} [code] Status code explaining why the connection is closing
+       * @param {(String|Buffer)} [data] The reason why the connection is
+       *     closing
+       * @public
+       */
+      close(code, data) {
+        if (this.readyState === _WebSocket.CLOSED)
+          return;
+        if (this.readyState === _WebSocket.CONNECTING) {
+          const msg = "WebSocket was closed before the connection was established";
+          abortHandshake(this, this._req, msg);
+          return;
+        }
+        if (this.readyState === _WebSocket.CLOSING) {
+          if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) {
+            this._socket.end();
+          }
+          return;
+        }
+        this._readyState = _WebSocket.CLOSING;
+        this._sender.close(code, data, !this._isServer, (err) => {
+          if (err)
+            return;
+          this._closeFrameSent = true;
+          if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) {
+            this._socket.end();
+          }
+        });
+        setCloseTimer(this);
+      }
+      /**
+       * Pause the socket.
+       *
+       * @public
+       */
+      pause() {
+        if (this.readyState === _WebSocket.CONNECTING || this.readyState === _WebSocket.CLOSED) {
+          return;
+        }
+        this._paused = true;
+        this._socket.pause();
+      }
+      /**
+       * Send a ping.
+       *
+       * @param {*} [data] The data to send
+       * @param {Boolean} [mask] Indicates whether or not to mask `data`
+       * @param {Function} [cb] Callback which is executed when the ping is sent
+       * @public
+       */
+      ping(data, mask, cb) {
+        if (this.readyState === _WebSocket.CONNECTING) {
+          throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+        }
+        if (typeof data === "function") {
+          cb = data;
+          data = mask = void 0;
+        } else if (typeof mask === "function") {
+          cb = mask;
+          mask = void 0;
+        }
+        if (typeof data === "number")
+          data = data.toString();
+        if (this.readyState !== _WebSocket.OPEN) {
+          sendAfterClose(this, data, cb);
+          return;
+        }
+        if (mask === void 0)
+          mask = !this._isServer;
+        this._sender.ping(data || EMPTY_BUFFER, mask, cb);
+      }
+      /**
+       * Send a pong.
+       *
+       * @param {*} [data] The data to send
+       * @param {Boolean} [mask] Indicates whether or not to mask `data`
+       * @param {Function} [cb] Callback which is executed when the pong is sent
+       * @public
+       */
+      pong(data, mask, cb) {
+        if (this.readyState === _WebSocket.CONNECTING) {
+          throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+        }
+        if (typeof data === "function") {
+          cb = data;
+          data = mask = void 0;
+        } else if (typeof mask === "function") {
+          cb = mask;
+          mask = void 0;
+        }
+        if (typeof data === "number")
+          data = data.toString();
+        if (this.readyState !== _WebSocket.OPEN) {
+          sendAfterClose(this, data, cb);
+          return;
+        }
+        if (mask === void 0)
+          mask = !this._isServer;
+        this._sender.pong(data || EMPTY_BUFFER, mask, cb);
+      }
+      /**
+       * Resume the socket.
+       *
+       * @public
+       */
+      resume() {
+        if (this.readyState === _WebSocket.CONNECTING || this.readyState === _WebSocket.CLOSED) {
+          return;
+        }
+        this._paused = false;
+        if (!this._receiver._writableState.needDrain)
+          this._socket.resume();
+      }
+      /**
+       * Send a data message.
+       *
+       * @param {*} data The message to send
+       * @param {Object} [options] Options object
+       * @param {Boolean} [options.binary] Specifies whether `data` is binary or
+       *     text
+       * @param {Boolean} [options.compress] Specifies whether or not to compress
+       *     `data`
+       * @param {Boolean} [options.fin=true] Specifies whether the fragment is the
+       *     last one
+       * @param {Boolean} [options.mask] Specifies whether or not to mask `data`
+       * @param {Function} [cb] Callback which is executed when data is written out
+       * @public
+       */
+      send(data, options, cb) {
+        if (this.readyState === _WebSocket.CONNECTING) {
+          throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+        }
+        if (typeof options === "function") {
+          cb = options;
+          options = {};
+        }
+        if (typeof data === "number")
+          data = data.toString();
+        if (this.readyState !== _WebSocket.OPEN) {
+          sendAfterClose(this, data, cb);
+          return;
+        }
+        const opts = {
+          binary: typeof data !== "string",
+          mask: !this._isServer,
+          compress: true,
+          fin: true,
+          ...options
+        };
+        if (!this._extensions[PerMessageDeflate.extensionName]) {
+          opts.compress = false;
+        }
+        this._sender.send(data || EMPTY_BUFFER, opts, cb);
+      }
+      /**
+       * Forcibly close the connection.
+       *
+       * @public
+       */
+      terminate() {
+        if (this.readyState === _WebSocket.CLOSED)
+          return;
+        if (this.readyState === _WebSocket.CONNECTING) {
+          const msg = "WebSocket was closed before the connection was established";
+          abortHandshake(this, this._req, msg);
+          return;
+        }
+        if (this._socket) {
+          this._readyState = _WebSocket.CLOSING;
+          this._socket.destroy();
+        }
+      }
+    };
+    Object.defineProperty(WebSocket2, "CONNECTING", {
+      enumerable: true,
+      value: readyStates.indexOf("CONNECTING")
+    });
+    Object.defineProperty(WebSocket2.prototype, "CONNECTING", {
+      enumerable: true,
+      value: readyStates.indexOf("CONNECTING")
+    });
+    Object.defineProperty(WebSocket2, "OPEN", {
+      enumerable: true,
+      value: readyStates.indexOf("OPEN")
+    });
+    Object.defineProperty(WebSocket2.prototype, "OPEN", {
+      enumerable: true,
+      value: readyStates.indexOf("OPEN")
+    });
+    Object.defineProperty(WebSocket2, "CLOSING", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSING")
+    });
+    Object.defineProperty(WebSocket2.prototype, "CLOSING", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSING")
+    });
+    Object.defineProperty(WebSocket2, "CLOSED", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSED")
+    });
+    Object.defineProperty(WebSocket2.prototype, "CLOSED", {
+      enumerable: true,
+      value: readyStates.indexOf("CLOSED")
+    });
+    [
+      "binaryType",
+      "bufferedAmount",
+      "extensions",
+      "isPaused",
+      "protocol",
+      "readyState",
+      "url"
+    ].forEach((property) => {
+      Object.defineProperty(WebSocket2.prototype, property, { enumerable: true });
+    });
+    ["open", "error", "close", "message"].forEach((method) => {
+      Object.defineProperty(WebSocket2.prototype, `on${method}`, {
+        enumerable: true,
+        get() {
+          for (const listener of this.listeners(method)) {
+            if (listener[kForOnEventAttribute])
+              return listener[kListener];
+          }
+          return null;
+        },
+        set(handler) {
+          for (const listener of this.listeners(method)) {
+            if (listener[kForOnEventAttribute]) {
+              this.removeListener(method, listener);
+              break;
+            }
+          }
+          if (typeof handler !== "function")
+            return;
+          this.addEventListener(method, handler, {
+            [kForOnEventAttribute]: true
+          });
+        }
+      });
+    });
+    WebSocket2.prototype.addEventListener = addEventListener;
+    WebSocket2.prototype.removeEventListener = removeEventListener;
+    module2.exports = WebSocket2;
+    function initAsClient(websocket, address, protocols, options) {
+      const opts = {
+        allowSynchronousEvents: true,
+        autoPong: true,
+        protocolVersion: protocolVersions[1],
+        maxPayload: 100 * 1024 * 1024,
+        skipUTF8Validation: false,
+        perMessageDeflate: true,
+        followRedirects: false,
+        maxRedirects: 10,
+        ...options,
+        socketPath: void 0,
+        hostname: void 0,
+        protocol: void 0,
+        timeout: void 0,
+        method: "GET",
+        host: void 0,
+        path: void 0,
+        port: void 0
+      };
+      websocket._autoPong = opts.autoPong;
+      if (!protocolVersions.includes(opts.protocolVersion)) {
+        throw new RangeError(
+          `Unsupported protocol version: ${opts.protocolVersion} (supported versions: ${protocolVersions.join(", ")})`
+        );
+      }
+      let parsedUrl;
+      if (address instanceof URL2) {
+        parsedUrl = address;
+      } else {
+        try {
+          parsedUrl = new URL2(address);
+        } catch (e) {
+          throw new SyntaxError(`Invalid URL: ${address}`);
+        }
+      }
+      if (parsedUrl.protocol === "http:") {
+        parsedUrl.protocol = "ws:";
+      } else if (parsedUrl.protocol === "https:") {
+        parsedUrl.protocol = "wss:";
+      }
+      websocket._url = parsedUrl.href;
+      const isSecure = parsedUrl.protocol === "wss:";
+      const isIpcUrl = parsedUrl.protocol === "ws+unix:";
+      let invalidUrlMessage;
+      if (parsedUrl.protocol !== "ws:" && !isSecure && !isIpcUrl) {
+        invalidUrlMessage = `The URL's protocol must be one of "ws:", "wss:", "http:", "https:", or "ws+unix:"`;
+      } else if (isIpcUrl && !parsedUrl.pathname) {
+        invalidUrlMessage = "The URL's pathname is empty";
+      } else if (parsedUrl.hash) {
+        invalidUrlMessage = "The URL contains a fragment identifier";
+      }
+      if (invalidUrlMessage) {
+        const err = new SyntaxError(invalidUrlMessage);
+        if (websocket._redirects === 0) {
+          throw err;
+        } else {
+          emitErrorAndClose(websocket, err);
+          return;
+        }
+      }
+      const defaultPort = isSecure ? 443 : 80;
+      const key = randomBytes(16).toString("base64");
+      const request = isSecure ? https.request : http.request;
+      const protocolSet = /* @__PURE__ */ new Set();
+      let perMessageDeflate;
+      opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
+      opts.defaultPort = opts.defaultPort || defaultPort;
+      opts.port = parsedUrl.port || defaultPort;
+      opts.host = parsedUrl.hostname.startsWith("[") ? parsedUrl.hostname.slice(1, -1) : parsedUrl.hostname;
+      opts.headers = {
+        ...opts.headers,
+        "Sec-WebSocket-Version": opts.protocolVersion,
+        "Sec-WebSocket-Key": key,
+        Connection: "Upgrade",
+        Upgrade: "websocket"
+      };
+      opts.path = parsedUrl.pathname + parsedUrl.search;
+      opts.timeout = opts.handshakeTimeout;
+      if (opts.perMessageDeflate) {
+        perMessageDeflate = new PerMessageDeflate(
+          opts.perMessageDeflate !== true ? opts.perMessageDeflate : {},
+          false,
+          opts.maxPayload
+        );
+        opts.headers["Sec-WebSocket-Extensions"] = format({
+          [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
+        });
+      }
+      if (protocols.length) {
+        for (const protocol of protocols) {
+          if (typeof protocol !== "string" || !subprotocolRegex.test(protocol) || protocolSet.has(protocol)) {
+            throw new SyntaxError(
+              "An invalid or duplicated subprotocol was specified"
+            );
+          }
+          protocolSet.add(protocol);
+        }
+        opts.headers["Sec-WebSocket-Protocol"] = protocols.join(",");
+      }
+      if (opts.origin) {
+        if (opts.protocolVersion < 13) {
+          opts.headers["Sec-WebSocket-Origin"] = opts.origin;
+        } else {
+          opts.headers.Origin = opts.origin;
+        }
+      }
+      if (parsedUrl.username || parsedUrl.password) {
+        opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+      }
+      if (isIpcUrl) {
+        const parts = opts.path.split(":");
+        opts.socketPath = parts[0];
+        opts.path = parts[1];
+      }
+      let req;
+      if (opts.followRedirects) {
+        if (websocket._redirects === 0) {
+          websocket._originalIpc = isIpcUrl;
+          websocket._originalSecure = isSecure;
+          websocket._originalHostOrSocketPath = isIpcUrl ? opts.socketPath : parsedUrl.host;
+          const headers = options && options.headers;
+          options = { ...options, headers: {} };
+          if (headers) {
+            for (const [key2, value2] of Object.entries(headers)) {
+              options.headers[key2.toLowerCase()] = value2;
+            }
+          }
+        } else if (websocket.listenerCount("redirect") === 0) {
+          const isSameHost = isIpcUrl ? websocket._originalIpc ? opts.socketPath === websocket._originalHostOrSocketPath : false : websocket._originalIpc ? false : parsedUrl.host === websocket._originalHostOrSocketPath;
+          if (!isSameHost || websocket._originalSecure && !isSecure) {
+            delete opts.headers.authorization;
+            delete opts.headers.cookie;
+            if (!isSameHost)
+              delete opts.headers.host;
+            opts.auth = void 0;
+          }
+        }
+        if (opts.auth && !options.headers.authorization) {
+          options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
+        }
+        req = websocket._req = request(opts);
+        if (websocket._redirects) {
+          websocket.emit("redirect", websocket.url, req);
+        }
+      } else {
+        req = websocket._req = request(opts);
+      }
+      if (opts.timeout) {
+        req.on("timeout", () => {
+          abortHandshake(websocket, req, "Opening handshake has timed out");
+        });
+      }
+      req.on("error", (err) => {
+        if (req === null || req[kAborted])
+          return;
+        req = websocket._req = null;
+        emitErrorAndClose(websocket, err);
+      });
+      req.on("response", (res) => {
+        const location = res.headers.location;
+        const statusCode = res.statusCode;
+        if (location && opts.followRedirects && statusCode >= 300 && statusCode < 400) {
+          if (++websocket._redirects > opts.maxRedirects) {
+            abortHandshake(websocket, req, "Maximum redirects exceeded");
+            return;
+          }
+          req.abort();
+          let addr;
+          try {
+            addr = new URL2(location, address);
+          } catch (e) {
+            const err = new SyntaxError(`Invalid URL: ${location}`);
+            emitErrorAndClose(websocket, err);
+            return;
+          }
+          initAsClient(websocket, addr, protocols, options);
+        } else if (!websocket.emit("unexpected-response", req, res)) {
+          abortHandshake(
+            websocket,
+            req,
+            `Unexpected server response: ${res.statusCode}`
+          );
+        }
+      });
+      req.on("upgrade", (res, socket, head) => {
+        websocket.emit("upgrade", res);
+        if (websocket.readyState !== WebSocket2.CONNECTING)
+          return;
+        req = websocket._req = null;
+        const upgrade = res.headers.upgrade;
+        if (upgrade === void 0 || upgrade.toLowerCase() !== "websocket") {
+          abortHandshake(websocket, socket, "Invalid Upgrade header");
+          return;
+        }
+        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        if (res.headers["sec-websocket-accept"] !== digest) {
+          abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
+          return;
+        }
+        const serverProt = res.headers["sec-websocket-protocol"];
+        let protError;
+        if (serverProt !== void 0) {
+          if (!protocolSet.size) {
+            protError = "Server sent a subprotocol but none was requested";
+          } else if (!protocolSet.has(serverProt)) {
+            protError = "Server sent an invalid subprotocol";
+          }
+        } else if (protocolSet.size) {
+          protError = "Server sent no subprotocol";
+        }
+        if (protError) {
+          abortHandshake(websocket, socket, protError);
+          return;
+        }
+        if (serverProt)
+          websocket._protocol = serverProt;
+        const secWebSocketExtensions = res.headers["sec-websocket-extensions"];
+        if (secWebSocketExtensions !== void 0) {
+          if (!perMessageDeflate) {
+            const message = "Server sent a Sec-WebSocket-Extensions header but no extension was requested";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          let extensions;
+          try {
+            extensions = parse3(secWebSocketExtensions);
+          } catch (err) {
+            const message = "Invalid Sec-WebSocket-Extensions header";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          const extensionNames = Object.keys(extensions);
+          if (extensionNames.length !== 1 || extensionNames[0] !== PerMessageDeflate.extensionName) {
+            const message = "Server indicated an extension that was not requested";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          try {
+            perMessageDeflate.accept(extensions[PerMessageDeflate.extensionName]);
+          } catch (err) {
+            const message = "Invalid Sec-WebSocket-Extensions header";
+            abortHandshake(websocket, socket, message);
+            return;
+          }
+          websocket._extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
+        }
+        websocket.setSocket(socket, head, {
+          allowSynchronousEvents: opts.allowSynchronousEvents,
+          generateMask: opts.generateMask,
+          maxPayload: opts.maxPayload,
+          skipUTF8Validation: opts.skipUTF8Validation
+        });
+      });
+      if (opts.finishRequest) {
+        opts.finishRequest(req, websocket);
+      } else {
+        req.end();
+      }
+    }
+    function emitErrorAndClose(websocket, err) {
+      websocket._readyState = WebSocket2.CLOSING;
+      websocket._errorEmitted = true;
+      websocket.emit("error", err);
+      websocket.emitClose();
+    }
+    function netConnect(options) {
+      options.path = options.socketPath;
+      return net.connect(options);
+    }
+    function tlsConnect(options) {
+      options.path = void 0;
+      if (!options.servername && options.servername !== "") {
+        options.servername = net.isIP(options.host) ? "" : options.host;
+      }
+      return tls.connect(options);
+    }
+    function abortHandshake(websocket, stream, message) {
+      websocket._readyState = WebSocket2.CLOSING;
+      const err = new Error(message);
+      Error.captureStackTrace(err, abortHandshake);
+      if (stream.setHeader) {
+        stream[kAborted] = true;
+        stream.abort();
+        if (stream.socket && !stream.socket.destroyed) {
+          stream.socket.destroy();
+        }
+        process.nextTick(emitErrorAndClose, websocket, err);
+      } else {
+        stream.destroy(err);
+        stream.once("error", websocket.emit.bind(websocket, "error"));
+        stream.once("close", websocket.emitClose.bind(websocket));
+      }
+    }
+    function sendAfterClose(websocket, data, cb) {
+      if (data) {
+        const length = isBlob(data) ? data.size : toBuffer(data).length;
+        if (websocket._socket)
+          websocket._sender._bufferedBytes += length;
+        else
+          websocket._bufferedAmount += length;
+      }
+      if (cb) {
+        const err = new Error(
+          `WebSocket is not open: readyState ${websocket.readyState} (${readyStates[websocket.readyState]})`
+        );
+        process.nextTick(cb, err);
+      }
+    }
+    function receiverOnConclude(code, reason) {
+      const websocket = this[kWebSocket];
+      websocket._closeFrameReceived = true;
+      websocket._closeMessage = reason;
+      websocket._closeCode = code;
+      if (websocket._socket[kWebSocket] === void 0)
+        return;
+      websocket._socket.removeListener("data", socketOnData);
+      process.nextTick(resume, websocket._socket);
+      if (code === 1005)
+        websocket.close();
+      else
+        websocket.close(code, reason);
+    }
+    function receiverOnDrain() {
+      const websocket = this[kWebSocket];
+      if (!websocket.isPaused)
+        websocket._socket.resume();
+    }
+    function receiverOnError(err) {
+      const websocket = this[kWebSocket];
+      if (websocket._socket[kWebSocket] !== void 0) {
+        websocket._socket.removeListener("data", socketOnData);
+        process.nextTick(resume, websocket._socket);
+        websocket.close(err[kStatusCode]);
+      }
+      if (!websocket._errorEmitted) {
+        websocket._errorEmitted = true;
+        websocket.emit("error", err);
+      }
+    }
+    function receiverOnFinish() {
+      this[kWebSocket].emitClose();
+    }
+    function receiverOnMessage(data, isBinary) {
+      this[kWebSocket].emit("message", data, isBinary);
+    }
+    function receiverOnPing(data) {
+      const websocket = this[kWebSocket];
+      if (websocket._autoPong)
+        websocket.pong(data, !this._isServer, NOOP);
+      websocket.emit("ping", data);
+    }
+    function receiverOnPong(data) {
+      this[kWebSocket].emit("pong", data);
+    }
+    function resume(stream) {
+      stream.resume();
+    }
+    function senderOnError(err) {
+      const websocket = this[kWebSocket];
+      if (websocket.readyState === WebSocket2.CLOSED)
+        return;
+      if (websocket.readyState === WebSocket2.OPEN) {
+        websocket._readyState = WebSocket2.CLOSING;
+        setCloseTimer(websocket);
+      }
+      this._socket.end();
+      if (!websocket._errorEmitted) {
+        websocket._errorEmitted = true;
+        websocket.emit("error", err);
+      }
+    }
+    function setCloseTimer(websocket) {
+      websocket._closeTimer = setTimeout(
+        websocket._socket.destroy.bind(websocket._socket),
+        closeTimeout
+      );
+    }
+    function socketOnClose() {
+      const websocket = this[kWebSocket];
+      this.removeListener("close", socketOnClose);
+      this.removeListener("data", socketOnData);
+      this.removeListener("end", socketOnEnd);
+      websocket._readyState = WebSocket2.CLOSING;
+      let chunk;
+      if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && (chunk = websocket._socket.read()) !== null) {
+        websocket._receiver.write(chunk);
+      }
+      websocket._receiver.end();
+      this[kWebSocket] = void 0;
+      clearTimeout(websocket._closeTimer);
+      if (websocket._receiver._writableState.finished || websocket._receiver._writableState.errorEmitted) {
+        websocket.emitClose();
+      } else {
+        websocket._receiver.on("error", receiverOnFinish);
+        websocket._receiver.on("finish", receiverOnFinish);
+      }
+    }
+    function socketOnData(chunk) {
+      if (!this[kWebSocket]._receiver.write(chunk)) {
+        this.pause();
+      }
+    }
+    function socketOnEnd() {
+      const websocket = this[kWebSocket];
+      websocket._readyState = WebSocket2.CLOSING;
+      websocket._receiver.end();
+      this.end();
+    }
+    function socketOnError() {
+      const websocket = this[kWebSocket];
+      this.removeListener("error", socketOnError);
+      this.on("error", NOOP);
+      if (websocket) {
+        websocket._readyState = WebSocket2.CLOSING;
+        this.destroy();
+      }
+    }
+  }
+});
+
+// node_modules/ws/lib/stream.js
+var require_stream = __commonJS({
+  "node_modules/ws/lib/stream.js"(exports2, module2) {
+    "use strict";
+    var WebSocket2 = require_websocket();
+    var { Duplex } = require("stream");
+    function emitClose(stream) {
+      stream.emit("close");
+    }
+    function duplexOnEnd() {
+      if (!this.destroyed && this._writableState.finished) {
+        this.destroy();
+      }
+    }
+    function duplexOnError(err) {
+      this.removeListener("error", duplexOnError);
+      this.destroy();
+      if (this.listenerCount("error") === 0) {
+        this.emit("error", err);
+      }
+    }
+    function createWebSocketStream2(ws, options) {
+      let terminateOnDestroy = true;
+      const duplex = new Duplex({
+        ...options,
+        autoDestroy: false,
+        emitClose: false,
+        objectMode: false,
+        writableObjectMode: false
+      });
+      ws.on("message", function message(msg, isBinary) {
+        const data = !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
+        if (!duplex.push(data))
+          ws.pause();
+      });
+      ws.once("error", function error35(err) {
+        if (duplex.destroyed)
+          return;
+        terminateOnDestroy = false;
+        duplex.destroy(err);
+      });
+      ws.once("close", function close() {
+        if (duplex.destroyed)
+          return;
+        duplex.push(null);
+      });
+      duplex._destroy = function(err, callback) {
+        if (ws.readyState === ws.CLOSED) {
+          callback(err);
+          process.nextTick(emitClose, duplex);
+          return;
+        }
+        let called = false;
+        ws.once("error", function error35(err2) {
+          called = true;
+          callback(err2);
+        });
+        ws.once("close", function close() {
+          if (!called)
+            callback(err);
+          process.nextTick(emitClose, duplex);
+        });
+        if (terminateOnDestroy)
+          ws.terminate();
+      };
+      duplex._final = function(callback) {
+        if (ws.readyState === ws.CONNECTING) {
+          ws.once("open", function open() {
+            duplex._final(callback);
+          });
+          return;
+        }
+        if (ws._socket === null)
+          return;
+        if (ws._socket._writableState.finished) {
+          callback();
+          if (duplex._readableState.endEmitted)
+            duplex.destroy();
+        } else {
+          ws._socket.once("finish", function finish() {
+            callback();
+          });
+          ws.close();
+        }
+      };
+      duplex._read = function() {
+        if (ws.isPaused)
+          ws.resume();
+      };
+      duplex._write = function(chunk, encoding, callback) {
+        if (ws.readyState === ws.CONNECTING) {
+          ws.once("open", function open() {
+            duplex._write(chunk, encoding, callback);
+          });
+          return;
+        }
+        ws.send(chunk, callback);
+      };
+      duplex.on("end", duplexOnEnd);
+      duplex.on("error", duplexOnError);
+      return duplex;
+    }
+    module2.exports = createWebSocketStream2;
+  }
+});
+
+// node_modules/ws/lib/subprotocol.js
+var require_subprotocol = __commonJS({
+  "node_modules/ws/lib/subprotocol.js"(exports2, module2) {
+    "use strict";
+    var { tokenChars } = require_validation();
+    function parse3(header) {
+      const protocols = /* @__PURE__ */ new Set();
+      let start = -1;
+      let end = -1;
+      let i = 0;
+      for (i; i < header.length; i++) {
+        const code = header.charCodeAt(i);
+        if (end === -1 && tokenChars[code] === 1) {
+          if (start === -1)
+            start = i;
+        } else if (i !== 0 && (code === 32 || code === 9)) {
+          if (end === -1 && start !== -1)
+            end = i;
+        } else if (code === 44) {
+          if (start === -1) {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+          if (end === -1)
+            end = i;
+          const protocol2 = header.slice(start, end);
+          if (protocols.has(protocol2)) {
+            throw new SyntaxError(`The "${protocol2}" subprotocol is duplicated`);
+          }
+          protocols.add(protocol2);
+          start = end = -1;
+        } else {
+          throw new SyntaxError(`Unexpected character at index ${i}`);
+        }
+      }
+      if (start === -1 || end !== -1) {
+        throw new SyntaxError("Unexpected end of input");
+      }
+      const protocol = header.slice(start, i);
+      if (protocols.has(protocol)) {
+        throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+      }
+      protocols.add(protocol);
+      return protocols;
+    }
+    module2.exports = { parse: parse3 };
+  }
+});
+
+// node_modules/ws/lib/websocket-server.js
+var require_websocket_server = __commonJS({
+  "node_modules/ws/lib/websocket-server.js"(exports2, module2) {
+    "use strict";
+    var EventEmitter = require("events");
+    var http = require("http");
+    var { Duplex } = require("stream");
+    var { createHash } = require("crypto");
+    var extension = require_extension();
+    var PerMessageDeflate = require_permessage_deflate();
+    var subprotocol = require_subprotocol();
+    var WebSocket2 = require_websocket();
+    var { GUID, kWebSocket } = require_constants();
+    var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
+    var RUNNING = 0;
+    var CLOSING = 1;
+    var CLOSED = 2;
+    var WebSocketServer2 = class extends EventEmitter {
+      /**
+       * Create a `WebSocketServer` instance.
+       *
+       * @param {Object} options Configuration options
+       * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+       *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+       *     multiple times in the same tick
+       * @param {Boolean} [options.autoPong=true] Specifies whether or not to
+       *     automatically send a pong in response to a ping
+       * @param {Number} [options.backlog=511] The maximum length of the queue of
+       *     pending connections
+       * @param {Boolean} [options.clientTracking=true] Specifies whether or not to
+       *     track clients
+       * @param {Function} [options.handleProtocols] A hook to handle protocols
+       * @param {String} [options.host] The hostname where to bind the server
+       * @param {Number} [options.maxPayload=104857600] The maximum allowed message
+       *     size
+       * @param {Boolean} [options.noServer=false] Enable no server mode
+       * @param {String} [options.path] Accept only connections matching this path
+       * @param {(Boolean|Object)} [options.perMessageDeflate=false] Enable/disable
+       *     permessage-deflate
+       * @param {Number} [options.port] The port where to bind the server
+       * @param {(http.Server|https.Server)} [options.server] A pre-created HTTP/S
+       *     server to use
+       * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+       *     not to skip UTF-8 validation for text and close messages
+       * @param {Function} [options.verifyClient] A hook to reject connections
+       * @param {Function} [options.WebSocket=WebSocket] Specifies the `WebSocket`
+       *     class to use. It must be the `WebSocket` class or class that extends it
+       * @param {Function} [callback] A listener for the `listening` event
+       */
+      constructor(options, callback) {
+        super();
+        options = {
+          allowSynchronousEvents: true,
+          autoPong: true,
+          maxPayload: 100 * 1024 * 1024,
+          skipUTF8Validation: false,
+          perMessageDeflate: false,
+          handleProtocols: null,
+          clientTracking: true,
+          verifyClient: null,
+          noServer: false,
+          backlog: null,
+          // use default (511 as implemented in net.js)
+          server: null,
+          host: null,
+          path: null,
+          port: null,
+          WebSocket: WebSocket2,
+          ...options
+        };
+        if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) {
+          throw new TypeError(
+            'One and only one of the "port", "server", or "noServer" options must be specified'
+          );
+        }
+        if (options.port != null) {
+          this._server = http.createServer((req, res) => {
+            const body = http.STATUS_CODES[426];
+            res.writeHead(426, {
+              "Content-Length": body.length,
+              "Content-Type": "text/plain"
+            });
+            res.end(body);
+          });
+          this._server.listen(
+            options.port,
+            options.host,
+            options.backlog,
+            callback
+          );
+        } else if (options.server) {
+          this._server = options.server;
+        }
+        if (this._server) {
+          const emitConnection = this.emit.bind(this, "connection");
+          this._removeListeners = addListeners(this._server, {
+            listening: this.emit.bind(this, "listening"),
+            error: this.emit.bind(this, "error"),
+            upgrade: (req, socket, head) => {
+              this.handleUpgrade(req, socket, head, emitConnection);
+            }
+          });
+        }
+        if (options.perMessageDeflate === true)
+          options.perMessageDeflate = {};
+        if (options.clientTracking) {
+          this.clients = /* @__PURE__ */ new Set();
+          this._shouldEmitClose = false;
+        }
+        this.options = options;
+        this._state = RUNNING;
+      }
+      /**
+       * Returns the bound address, the address family name, and port of the server
+       * as reported by the operating system if listening on an IP socket.
+       * If the server is listening on a pipe or UNIX domain socket, the name is
+       * returned as a string.
+       *
+       * @return {(Object|String|null)} The address of the server
+       * @public
+       */
+      address() {
+        if (this.options.noServer) {
+          throw new Error('The server is operating in "noServer" mode');
+        }
+        if (!this._server)
+          return null;
+        return this._server.address();
+      }
+      /**
+       * Stop the server from accepting new connections and emit the `'close'` event
+       * when all existing connections are closed.
+       *
+       * @param {Function} [cb] A one-time listener for the `'close'` event
+       * @public
+       */
+      close(cb) {
+        if (this._state === CLOSED) {
+          if (cb) {
+            this.once("close", () => {
+              cb(new Error("The server is not running"));
+            });
+          }
+          process.nextTick(emitClose, this);
+          return;
+        }
+        if (cb)
+          this.once("close", cb);
+        if (this._state === CLOSING)
+          return;
+        this._state = CLOSING;
+        if (this.options.noServer || this.options.server) {
+          if (this._server) {
+            this._removeListeners();
+            this._removeListeners = this._server = null;
+          }
+          if (this.clients) {
+            if (!this.clients.size) {
+              process.nextTick(emitClose, this);
+            } else {
+              this._shouldEmitClose = true;
+            }
+          } else {
+            process.nextTick(emitClose, this);
+          }
+        } else {
+          const server = this._server;
+          this._removeListeners();
+          this._removeListeners = this._server = null;
+          server.close(() => {
+            emitClose(this);
+          });
+        }
+      }
+      /**
+       * See if a given request should be handled by this server instance.
+       *
+       * @param {http.IncomingMessage} req Request object to inspect
+       * @return {Boolean} `true` if the request is valid, else `false`
+       * @public
+       */
+      shouldHandle(req) {
+        if (this.options.path) {
+          const index = req.url.indexOf("?");
+          const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
+          if (pathname !== this.options.path)
+            return false;
+        }
+        return true;
+      }
+      /**
+       * Handle a HTTP Upgrade request.
+       *
+       * @param {http.IncomingMessage} req The request object
+       * @param {Duplex} socket The network socket between the server and client
+       * @param {Buffer} head The first packet of the upgraded stream
+       * @param {Function} cb Callback
+       * @public
+       */
+      handleUpgrade(req, socket, head, cb) {
+        socket.on("error", socketOnError);
+        const key = req.headers["sec-websocket-key"];
+        const upgrade = req.headers.upgrade;
+        const version3 = +req.headers["sec-websocket-version"];
+        if (req.method !== "GET") {
+          const message = "Invalid HTTP method";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
+          return;
+        }
+        if (upgrade === void 0 || upgrade.toLowerCase() !== "websocket") {
+          const message = "Invalid Upgrade header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+        if (key === void 0 || !keyRegex.test(key)) {
+          const message = "Missing or invalid Sec-WebSocket-Key header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+        if (version3 !== 8 && version3 !== 13) {
+          const message = "Missing or invalid Sec-WebSocket-Version header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+        if (!this.shouldHandle(req)) {
+          abortHandshake(socket, 400);
+          return;
+        }
+        const secWebSocketProtocol = req.headers["sec-websocket-protocol"];
+        let protocols = /* @__PURE__ */ new Set();
+        if (secWebSocketProtocol !== void 0) {
+          try {
+            protocols = subprotocol.parse(secWebSocketProtocol);
+          } catch (err) {
+            const message = "Invalid Sec-WebSocket-Protocol header";
+            abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+            return;
+          }
+        }
+        const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
+        const extensions = {};
+        if (this.options.perMessageDeflate && secWebSocketExtensions !== void 0) {
+          const perMessageDeflate = new PerMessageDeflate(
+            this.options.perMessageDeflate,
+            true,
+            this.options.maxPayload
+          );
+          try {
+            const offers = extension.parse(secWebSocketExtensions);
+            if (offers[PerMessageDeflate.extensionName]) {
+              perMessageDeflate.accept(offers[PerMessageDeflate.extensionName]);
+              extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
+            }
+          } catch (err) {
+            const message = "Invalid or unacceptable Sec-WebSocket-Extensions header";
+            abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+            return;
+          }
+        }
+        if (this.options.verifyClient) {
+          const info = {
+            origin: req.headers[`${version3 === 8 ? "sec-websocket-origin" : "origin"}`],
+            secure: !!(req.socket.authorized || req.socket.encrypted),
+            req
+          };
+          if (this.options.verifyClient.length === 2) {
+            this.options.verifyClient(info, (verified, code, message, headers) => {
+              if (!verified) {
+                return abortHandshake(socket, code || 401, message, headers);
+              }
+              this.completeUpgrade(
+                extensions,
+                key,
+                protocols,
+                req,
+                socket,
+                head,
+                cb
+              );
+            });
+            return;
+          }
+          if (!this.options.verifyClient(info))
+            return abortHandshake(socket, 401);
+        }
+        this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+      }
+      /**
+       * Upgrade the connection to WebSocket.
+       *
+       * @param {Object} extensions The accepted extensions
+       * @param {String} key The value of the `Sec-WebSocket-Key` header
+       * @param {Set} protocols The subprotocols
+       * @param {http.IncomingMessage} req The request object
+       * @param {Duplex} socket The network socket between the server and client
+       * @param {Buffer} head The first packet of the upgraded stream
+       * @param {Function} cb Callback
+       * @throws {Error} If called more than once with the same socket
+       * @private
+       */
+      completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+        if (!socket.readable || !socket.writable)
+          return socket.destroy();
+        if (socket[kWebSocket]) {
+          throw new Error(
+            "server.handleUpgrade() was called more than once with the same socket, possibly due to a misconfiguration"
+          );
+        }
+        if (this._state > RUNNING)
+          return abortHandshake(socket, 503);
+        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const headers = [
+          "HTTP/1.1 101 Switching Protocols",
+          "Upgrade: websocket",
+          "Connection: Upgrade",
+          `Sec-WebSocket-Accept: ${digest}`
+        ];
+        const ws = new this.options.WebSocket(null, void 0, this.options);
+        if (protocols.size) {
+          const protocol = this.options.handleProtocols ? this.options.handleProtocols(protocols, req) : protocols.values().next().value;
+          if (protocol) {
+            headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
+            ws._protocol = protocol;
+          }
+        }
+        if (extensions[PerMessageDeflate.extensionName]) {
+          const params = extensions[PerMessageDeflate.extensionName].params;
+          const value2 = extension.format({
+            [PerMessageDeflate.extensionName]: [params]
+          });
+          headers.push(`Sec-WebSocket-Extensions: ${value2}`);
+          ws._extensions = extensions;
+        }
+        this.emit("headers", headers, req);
+        socket.write(headers.concat("\r\n").join("\r\n"));
+        socket.removeListener("error", socketOnError);
+        ws.setSocket(socket, head, {
+          allowSynchronousEvents: this.options.allowSynchronousEvents,
+          maxPayload: this.options.maxPayload,
+          skipUTF8Validation: this.options.skipUTF8Validation
+        });
+        if (this.clients) {
+          this.clients.add(ws);
+          ws.on("close", () => {
+            this.clients.delete(ws);
+            if (this._shouldEmitClose && !this.clients.size) {
+              process.nextTick(emitClose, this);
+            }
+          });
+        }
+        cb(ws, req);
+      }
+    };
+    module2.exports = WebSocketServer2;
+    function addListeners(server, map2) {
+      for (const event of Object.keys(map2))
+        server.on(event, map2[event]);
+      return function removeListeners() {
+        for (const event of Object.keys(map2)) {
+          server.removeListener(event, map2[event]);
+        }
+      };
+    }
+    function emitClose(server) {
+      server._state = CLOSED;
+      server.emit("close");
+    }
+    function socketOnError() {
+      this.destroy();
+    }
+    function abortHandshake(socket, code, message, headers) {
+      message = message || http.STATUS_CODES[code];
+      headers = {
+        Connection: "close",
+        "Content-Type": "text/html",
+        "Content-Length": Buffer.byteLength(message),
+        ...headers
+      };
+      socket.once("finish", socket.destroy);
+      socket.end(
+        `HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r
+` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join("\r\n") + "\r\n\r\n" + message
+      );
+    }
+    function abortHandshakeOrEmitwsClientError(server, req, socket, code, message) {
+      if (server.listenerCount("wsClientError")) {
+        const err = new Error(message);
+        Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
+        server.emit("wsClientError", err, socket, req);
+      } else {
+        abortHandshake(socket, code, message);
+      }
+    }
+  }
+});
+
 // node_modules/@babel/types/lib/utils/shallowEqual.js
 var require_shallowEqual = __commonJS({
-  "node_modules/@babel/types/lib/utils/shallowEqual.js"(exports) {
+  "node_modules/@babel/types/lib/utils/shallowEqual.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = shallowEqual;
+    exports2.default = shallowEqual;
     function shallowEqual(actual, expected) {
       const keys = Object.keys(expected);
       for (const key of keys) {
@@ -57,12 +3750,12 @@ var require_shallowEqual = __commonJS({
 
 // node_modules/@babel/types/lib/utils/deprecationWarning.js
 var require_deprecationWarning = __commonJS({
-  "node_modules/@babel/types/lib/utils/deprecationWarning.js"(exports) {
+  "node_modules/@babel/types/lib/utils/deprecationWarning.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = deprecationWarning;
+    exports2.default = deprecationWarning;
     var warnings = /* @__PURE__ */ new Set();
     function deprecationWarning(oldName, newName, prefix = "", cacheKey = oldName) {
       if (warnings.has(cacheKey))
@@ -107,317 +3800,317 @@ ${trace}`);
 
 // node_modules/@babel/types/lib/validators/generated/index.js
 var require_generated = __commonJS({
-  "node_modules/@babel/types/lib/validators/generated/index.js"(exports) {
+  "node_modules/@babel/types/lib/validators/generated/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.isAccessor = isAccessor;
-    exports.isAnyTypeAnnotation = isAnyTypeAnnotation;
-    exports.isArgumentPlaceholder = isArgumentPlaceholder;
-    exports.isArrayExpression = isArrayExpression;
-    exports.isArrayPattern = isArrayPattern;
-    exports.isArrayTypeAnnotation = isArrayTypeAnnotation;
-    exports.isArrowFunctionExpression = isArrowFunctionExpression;
-    exports.isAssignmentExpression = isAssignmentExpression;
-    exports.isAssignmentPattern = isAssignmentPattern;
-    exports.isAwaitExpression = isAwaitExpression;
-    exports.isBigIntLiteral = isBigIntLiteral;
-    exports.isBinary = isBinary;
-    exports.isBinaryExpression = isBinaryExpression;
-    exports.isBindExpression = isBindExpression;
-    exports.isBlock = isBlock;
-    exports.isBlockParent = isBlockParent;
-    exports.isBlockStatement = isBlockStatement;
-    exports.isBooleanLiteral = isBooleanLiteral;
-    exports.isBooleanLiteralTypeAnnotation = isBooleanLiteralTypeAnnotation;
-    exports.isBooleanTypeAnnotation = isBooleanTypeAnnotation;
-    exports.isBreakStatement = isBreakStatement;
-    exports.isCallExpression = isCallExpression;
-    exports.isCatchClause = isCatchClause;
-    exports.isClass = isClass;
-    exports.isClassAccessorProperty = isClassAccessorProperty;
-    exports.isClassBody = isClassBody;
-    exports.isClassDeclaration = isClassDeclaration;
-    exports.isClassExpression = isClassExpression;
-    exports.isClassImplements = isClassImplements;
-    exports.isClassMethod = isClassMethod;
-    exports.isClassPrivateMethod = isClassPrivateMethod;
-    exports.isClassPrivateProperty = isClassPrivateProperty;
-    exports.isClassProperty = isClassProperty;
-    exports.isCompletionStatement = isCompletionStatement;
-    exports.isConditional = isConditional;
-    exports.isConditionalExpression = isConditionalExpression;
-    exports.isContinueStatement = isContinueStatement;
-    exports.isDebuggerStatement = isDebuggerStatement;
-    exports.isDecimalLiteral = isDecimalLiteral;
-    exports.isDeclaration = isDeclaration;
-    exports.isDeclareClass = isDeclareClass;
-    exports.isDeclareExportAllDeclaration = isDeclareExportAllDeclaration;
-    exports.isDeclareExportDeclaration = isDeclareExportDeclaration;
-    exports.isDeclareFunction = isDeclareFunction;
-    exports.isDeclareInterface = isDeclareInterface;
-    exports.isDeclareModule = isDeclareModule;
-    exports.isDeclareModuleExports = isDeclareModuleExports;
-    exports.isDeclareOpaqueType = isDeclareOpaqueType;
-    exports.isDeclareTypeAlias = isDeclareTypeAlias;
-    exports.isDeclareVariable = isDeclareVariable;
-    exports.isDeclaredPredicate = isDeclaredPredicate;
-    exports.isDecorator = isDecorator;
-    exports.isDirective = isDirective;
-    exports.isDirectiveLiteral = isDirectiveLiteral;
-    exports.isDoExpression = isDoExpression;
-    exports.isDoWhileStatement = isDoWhileStatement;
-    exports.isEmptyStatement = isEmptyStatement;
-    exports.isEmptyTypeAnnotation = isEmptyTypeAnnotation;
-    exports.isEnumBody = isEnumBody;
-    exports.isEnumBooleanBody = isEnumBooleanBody;
-    exports.isEnumBooleanMember = isEnumBooleanMember;
-    exports.isEnumDeclaration = isEnumDeclaration;
-    exports.isEnumDefaultedMember = isEnumDefaultedMember;
-    exports.isEnumMember = isEnumMember;
-    exports.isEnumNumberBody = isEnumNumberBody;
-    exports.isEnumNumberMember = isEnumNumberMember;
-    exports.isEnumStringBody = isEnumStringBody;
-    exports.isEnumStringMember = isEnumStringMember;
-    exports.isEnumSymbolBody = isEnumSymbolBody;
-    exports.isExistsTypeAnnotation = isExistsTypeAnnotation;
-    exports.isExportAllDeclaration = isExportAllDeclaration;
-    exports.isExportDeclaration = isExportDeclaration;
-    exports.isExportDefaultDeclaration = isExportDefaultDeclaration;
-    exports.isExportDefaultSpecifier = isExportDefaultSpecifier;
-    exports.isExportNamedDeclaration = isExportNamedDeclaration;
-    exports.isExportNamespaceSpecifier = isExportNamespaceSpecifier;
-    exports.isExportSpecifier = isExportSpecifier;
-    exports.isExpression = isExpression;
-    exports.isExpressionStatement = isExpressionStatement;
-    exports.isExpressionWrapper = isExpressionWrapper;
-    exports.isFile = isFile;
-    exports.isFlow = isFlow;
-    exports.isFlowBaseAnnotation = isFlowBaseAnnotation;
-    exports.isFlowDeclaration = isFlowDeclaration;
-    exports.isFlowPredicate = isFlowPredicate;
-    exports.isFlowType = isFlowType;
-    exports.isFor = isFor;
-    exports.isForInStatement = isForInStatement;
-    exports.isForOfStatement = isForOfStatement;
-    exports.isForStatement = isForStatement;
-    exports.isForXStatement = isForXStatement;
-    exports.isFunction = isFunction;
-    exports.isFunctionDeclaration = isFunctionDeclaration;
-    exports.isFunctionExpression = isFunctionExpression;
-    exports.isFunctionParent = isFunctionParent;
-    exports.isFunctionTypeAnnotation = isFunctionTypeAnnotation;
-    exports.isFunctionTypeParam = isFunctionTypeParam;
-    exports.isGenericTypeAnnotation = isGenericTypeAnnotation;
-    exports.isIdentifier = isIdentifier;
-    exports.isIfStatement = isIfStatement;
-    exports.isImmutable = isImmutable;
-    exports.isImport = isImport;
-    exports.isImportAttribute = isImportAttribute;
-    exports.isImportDeclaration = isImportDeclaration;
-    exports.isImportDefaultSpecifier = isImportDefaultSpecifier;
-    exports.isImportExpression = isImportExpression;
-    exports.isImportNamespaceSpecifier = isImportNamespaceSpecifier;
-    exports.isImportOrExportDeclaration = isImportOrExportDeclaration;
-    exports.isImportSpecifier = isImportSpecifier;
-    exports.isIndexedAccessType = isIndexedAccessType;
-    exports.isInferredPredicate = isInferredPredicate;
-    exports.isInterfaceDeclaration = isInterfaceDeclaration;
-    exports.isInterfaceExtends = isInterfaceExtends;
-    exports.isInterfaceTypeAnnotation = isInterfaceTypeAnnotation;
-    exports.isInterpreterDirective = isInterpreterDirective;
-    exports.isIntersectionTypeAnnotation = isIntersectionTypeAnnotation;
-    exports.isJSX = isJSX;
-    exports.isJSXAttribute = isJSXAttribute;
-    exports.isJSXClosingElement = isJSXClosingElement;
-    exports.isJSXClosingFragment = isJSXClosingFragment;
-    exports.isJSXElement = isJSXElement;
-    exports.isJSXEmptyExpression = isJSXEmptyExpression;
-    exports.isJSXExpressionContainer = isJSXExpressionContainer;
-    exports.isJSXFragment = isJSXFragment;
-    exports.isJSXIdentifier = isJSXIdentifier;
-    exports.isJSXMemberExpression = isJSXMemberExpression;
-    exports.isJSXNamespacedName = isJSXNamespacedName;
-    exports.isJSXOpeningElement = isJSXOpeningElement;
-    exports.isJSXOpeningFragment = isJSXOpeningFragment;
-    exports.isJSXSpreadAttribute = isJSXSpreadAttribute;
-    exports.isJSXSpreadChild = isJSXSpreadChild;
-    exports.isJSXText = isJSXText;
-    exports.isLVal = isLVal;
-    exports.isLabeledStatement = isLabeledStatement;
-    exports.isLiteral = isLiteral;
-    exports.isLogicalExpression = isLogicalExpression;
-    exports.isLoop = isLoop;
-    exports.isMemberExpression = isMemberExpression;
-    exports.isMetaProperty = isMetaProperty;
-    exports.isMethod = isMethod;
-    exports.isMiscellaneous = isMiscellaneous;
-    exports.isMixedTypeAnnotation = isMixedTypeAnnotation;
-    exports.isModuleDeclaration = isModuleDeclaration;
-    exports.isModuleExpression = isModuleExpression;
-    exports.isModuleSpecifier = isModuleSpecifier;
-    exports.isNewExpression = isNewExpression;
-    exports.isNoop = isNoop;
-    exports.isNullLiteral = isNullLiteral;
-    exports.isNullLiteralTypeAnnotation = isNullLiteralTypeAnnotation;
-    exports.isNullableTypeAnnotation = isNullableTypeAnnotation;
-    exports.isNumberLiteral = isNumberLiteral;
-    exports.isNumberLiteralTypeAnnotation = isNumberLiteralTypeAnnotation;
-    exports.isNumberTypeAnnotation = isNumberTypeAnnotation;
-    exports.isNumericLiteral = isNumericLiteral;
-    exports.isObjectExpression = isObjectExpression;
-    exports.isObjectMember = isObjectMember;
-    exports.isObjectMethod = isObjectMethod;
-    exports.isObjectPattern = isObjectPattern;
-    exports.isObjectProperty = isObjectProperty;
-    exports.isObjectTypeAnnotation = isObjectTypeAnnotation;
-    exports.isObjectTypeCallProperty = isObjectTypeCallProperty;
-    exports.isObjectTypeIndexer = isObjectTypeIndexer;
-    exports.isObjectTypeInternalSlot = isObjectTypeInternalSlot;
-    exports.isObjectTypeProperty = isObjectTypeProperty;
-    exports.isObjectTypeSpreadProperty = isObjectTypeSpreadProperty;
-    exports.isOpaqueType = isOpaqueType;
-    exports.isOptionalCallExpression = isOptionalCallExpression;
-    exports.isOptionalIndexedAccessType = isOptionalIndexedAccessType;
-    exports.isOptionalMemberExpression = isOptionalMemberExpression;
-    exports.isParenthesizedExpression = isParenthesizedExpression;
-    exports.isPattern = isPattern;
-    exports.isPatternLike = isPatternLike;
-    exports.isPipelineBareFunction = isPipelineBareFunction;
-    exports.isPipelinePrimaryTopicReference = isPipelinePrimaryTopicReference;
-    exports.isPipelineTopicExpression = isPipelineTopicExpression;
-    exports.isPlaceholder = isPlaceholder;
-    exports.isPrivate = isPrivate;
-    exports.isPrivateName = isPrivateName;
-    exports.isProgram = isProgram;
-    exports.isProperty = isProperty;
-    exports.isPureish = isPureish;
-    exports.isQualifiedTypeIdentifier = isQualifiedTypeIdentifier;
-    exports.isRecordExpression = isRecordExpression;
-    exports.isRegExpLiteral = isRegExpLiteral;
-    exports.isRegexLiteral = isRegexLiteral;
-    exports.isRestElement = isRestElement;
-    exports.isRestProperty = isRestProperty;
-    exports.isReturnStatement = isReturnStatement;
-    exports.isScopable = isScopable;
-    exports.isSequenceExpression = isSequenceExpression;
-    exports.isSpreadElement = isSpreadElement;
-    exports.isSpreadProperty = isSpreadProperty;
-    exports.isStandardized = isStandardized;
-    exports.isStatement = isStatement;
-    exports.isStaticBlock = isStaticBlock;
-    exports.isStringLiteral = isStringLiteral;
-    exports.isStringLiteralTypeAnnotation = isStringLiteralTypeAnnotation;
-    exports.isStringTypeAnnotation = isStringTypeAnnotation;
-    exports.isSuper = isSuper;
-    exports.isSwitchCase = isSwitchCase;
-    exports.isSwitchStatement = isSwitchStatement;
-    exports.isSymbolTypeAnnotation = isSymbolTypeAnnotation;
-    exports.isTSAnyKeyword = isTSAnyKeyword;
-    exports.isTSArrayType = isTSArrayType;
-    exports.isTSAsExpression = isTSAsExpression;
-    exports.isTSBaseType = isTSBaseType;
-    exports.isTSBigIntKeyword = isTSBigIntKeyword;
-    exports.isTSBooleanKeyword = isTSBooleanKeyword;
-    exports.isTSCallSignatureDeclaration = isTSCallSignatureDeclaration;
-    exports.isTSConditionalType = isTSConditionalType;
-    exports.isTSConstructSignatureDeclaration = isTSConstructSignatureDeclaration;
-    exports.isTSConstructorType = isTSConstructorType;
-    exports.isTSDeclareFunction = isTSDeclareFunction;
-    exports.isTSDeclareMethod = isTSDeclareMethod;
-    exports.isTSEntityName = isTSEntityName;
-    exports.isTSEnumBody = isTSEnumBody;
-    exports.isTSEnumDeclaration = isTSEnumDeclaration;
-    exports.isTSEnumMember = isTSEnumMember;
-    exports.isTSExportAssignment = isTSExportAssignment;
-    exports.isTSExpressionWithTypeArguments = isTSExpressionWithTypeArguments;
-    exports.isTSExternalModuleReference = isTSExternalModuleReference;
-    exports.isTSFunctionType = isTSFunctionType;
-    exports.isTSImportEqualsDeclaration = isTSImportEqualsDeclaration;
-    exports.isTSImportType = isTSImportType;
-    exports.isTSIndexSignature = isTSIndexSignature;
-    exports.isTSIndexedAccessType = isTSIndexedAccessType;
-    exports.isTSInferType = isTSInferType;
-    exports.isTSInstantiationExpression = isTSInstantiationExpression;
-    exports.isTSInterfaceBody = isTSInterfaceBody;
-    exports.isTSInterfaceDeclaration = isTSInterfaceDeclaration;
-    exports.isTSIntersectionType = isTSIntersectionType;
-    exports.isTSIntrinsicKeyword = isTSIntrinsicKeyword;
-    exports.isTSLiteralType = isTSLiteralType;
-    exports.isTSMappedType = isTSMappedType;
-    exports.isTSMethodSignature = isTSMethodSignature;
-    exports.isTSModuleBlock = isTSModuleBlock;
-    exports.isTSModuleDeclaration = isTSModuleDeclaration;
-    exports.isTSNamedTupleMember = isTSNamedTupleMember;
-    exports.isTSNamespaceExportDeclaration = isTSNamespaceExportDeclaration;
-    exports.isTSNeverKeyword = isTSNeverKeyword;
-    exports.isTSNonNullExpression = isTSNonNullExpression;
-    exports.isTSNullKeyword = isTSNullKeyword;
-    exports.isTSNumberKeyword = isTSNumberKeyword;
-    exports.isTSObjectKeyword = isTSObjectKeyword;
-    exports.isTSOptionalType = isTSOptionalType;
-    exports.isTSParameterProperty = isTSParameterProperty;
-    exports.isTSParenthesizedType = isTSParenthesizedType;
-    exports.isTSPropertySignature = isTSPropertySignature;
-    exports.isTSQualifiedName = isTSQualifiedName;
-    exports.isTSRestType = isTSRestType;
-    exports.isTSSatisfiesExpression = isTSSatisfiesExpression;
-    exports.isTSStringKeyword = isTSStringKeyword;
-    exports.isTSSymbolKeyword = isTSSymbolKeyword;
-    exports.isTSTemplateLiteralType = isTSTemplateLiteralType;
-    exports.isTSThisType = isTSThisType;
-    exports.isTSTupleType = isTSTupleType;
-    exports.isTSType = isTSType;
-    exports.isTSTypeAliasDeclaration = isTSTypeAliasDeclaration;
-    exports.isTSTypeAnnotation = isTSTypeAnnotation;
-    exports.isTSTypeAssertion = isTSTypeAssertion;
-    exports.isTSTypeElement = isTSTypeElement;
-    exports.isTSTypeLiteral = isTSTypeLiteral;
-    exports.isTSTypeOperator = isTSTypeOperator;
-    exports.isTSTypeParameter = isTSTypeParameter;
-    exports.isTSTypeParameterDeclaration = isTSTypeParameterDeclaration;
-    exports.isTSTypeParameterInstantiation = isTSTypeParameterInstantiation;
-    exports.isTSTypePredicate = isTSTypePredicate;
-    exports.isTSTypeQuery = isTSTypeQuery;
-    exports.isTSTypeReference = isTSTypeReference;
-    exports.isTSUndefinedKeyword = isTSUndefinedKeyword;
-    exports.isTSUnionType = isTSUnionType;
-    exports.isTSUnknownKeyword = isTSUnknownKeyword;
-    exports.isTSVoidKeyword = isTSVoidKeyword;
-    exports.isTaggedTemplateExpression = isTaggedTemplateExpression;
-    exports.isTemplateElement = isTemplateElement;
-    exports.isTemplateLiteral = isTemplateLiteral;
-    exports.isTerminatorless = isTerminatorless;
-    exports.isThisExpression = isThisExpression;
-    exports.isThisTypeAnnotation = isThisTypeAnnotation;
-    exports.isThrowStatement = isThrowStatement;
-    exports.isTopicReference = isTopicReference;
-    exports.isTryStatement = isTryStatement;
-    exports.isTupleExpression = isTupleExpression;
-    exports.isTupleTypeAnnotation = isTupleTypeAnnotation;
-    exports.isTypeAlias = isTypeAlias;
-    exports.isTypeAnnotation = isTypeAnnotation;
-    exports.isTypeCastExpression = isTypeCastExpression;
-    exports.isTypeParameter = isTypeParameter;
-    exports.isTypeParameterDeclaration = isTypeParameterDeclaration;
-    exports.isTypeParameterInstantiation = isTypeParameterInstantiation;
-    exports.isTypeScript = isTypeScript;
-    exports.isTypeofTypeAnnotation = isTypeofTypeAnnotation;
-    exports.isUnaryExpression = isUnaryExpression;
-    exports.isUnaryLike = isUnaryLike;
-    exports.isUnionTypeAnnotation = isUnionTypeAnnotation;
-    exports.isUpdateExpression = isUpdateExpression;
-    exports.isUserWhitespacable = isUserWhitespacable;
-    exports.isV8IntrinsicIdentifier = isV8IntrinsicIdentifier;
-    exports.isVariableDeclaration = isVariableDeclaration;
-    exports.isVariableDeclarator = isVariableDeclarator;
-    exports.isVariance = isVariance;
-    exports.isVoidTypeAnnotation = isVoidTypeAnnotation;
-    exports.isWhile = isWhile;
-    exports.isWhileStatement = isWhileStatement;
-    exports.isWithStatement = isWithStatement;
-    exports.isYieldExpression = isYieldExpression;
+    exports2.isAccessor = isAccessor;
+    exports2.isAnyTypeAnnotation = isAnyTypeAnnotation;
+    exports2.isArgumentPlaceholder = isArgumentPlaceholder;
+    exports2.isArrayExpression = isArrayExpression;
+    exports2.isArrayPattern = isArrayPattern;
+    exports2.isArrayTypeAnnotation = isArrayTypeAnnotation;
+    exports2.isArrowFunctionExpression = isArrowFunctionExpression;
+    exports2.isAssignmentExpression = isAssignmentExpression;
+    exports2.isAssignmentPattern = isAssignmentPattern;
+    exports2.isAwaitExpression = isAwaitExpression;
+    exports2.isBigIntLiteral = isBigIntLiteral;
+    exports2.isBinary = isBinary;
+    exports2.isBinaryExpression = isBinaryExpression;
+    exports2.isBindExpression = isBindExpression;
+    exports2.isBlock = isBlock;
+    exports2.isBlockParent = isBlockParent;
+    exports2.isBlockStatement = isBlockStatement;
+    exports2.isBooleanLiteral = isBooleanLiteral;
+    exports2.isBooleanLiteralTypeAnnotation = isBooleanLiteralTypeAnnotation;
+    exports2.isBooleanTypeAnnotation = isBooleanTypeAnnotation;
+    exports2.isBreakStatement = isBreakStatement;
+    exports2.isCallExpression = isCallExpression;
+    exports2.isCatchClause = isCatchClause;
+    exports2.isClass = isClass;
+    exports2.isClassAccessorProperty = isClassAccessorProperty;
+    exports2.isClassBody = isClassBody;
+    exports2.isClassDeclaration = isClassDeclaration;
+    exports2.isClassExpression = isClassExpression;
+    exports2.isClassImplements = isClassImplements;
+    exports2.isClassMethod = isClassMethod;
+    exports2.isClassPrivateMethod = isClassPrivateMethod;
+    exports2.isClassPrivateProperty = isClassPrivateProperty;
+    exports2.isClassProperty = isClassProperty;
+    exports2.isCompletionStatement = isCompletionStatement;
+    exports2.isConditional = isConditional;
+    exports2.isConditionalExpression = isConditionalExpression;
+    exports2.isContinueStatement = isContinueStatement;
+    exports2.isDebuggerStatement = isDebuggerStatement;
+    exports2.isDecimalLiteral = isDecimalLiteral;
+    exports2.isDeclaration = isDeclaration;
+    exports2.isDeclareClass = isDeclareClass;
+    exports2.isDeclareExportAllDeclaration = isDeclareExportAllDeclaration;
+    exports2.isDeclareExportDeclaration = isDeclareExportDeclaration;
+    exports2.isDeclareFunction = isDeclareFunction;
+    exports2.isDeclareInterface = isDeclareInterface;
+    exports2.isDeclareModule = isDeclareModule;
+    exports2.isDeclareModuleExports = isDeclareModuleExports;
+    exports2.isDeclareOpaqueType = isDeclareOpaqueType;
+    exports2.isDeclareTypeAlias = isDeclareTypeAlias;
+    exports2.isDeclareVariable = isDeclareVariable;
+    exports2.isDeclaredPredicate = isDeclaredPredicate;
+    exports2.isDecorator = isDecorator;
+    exports2.isDirective = isDirective;
+    exports2.isDirectiveLiteral = isDirectiveLiteral;
+    exports2.isDoExpression = isDoExpression;
+    exports2.isDoWhileStatement = isDoWhileStatement;
+    exports2.isEmptyStatement = isEmptyStatement;
+    exports2.isEmptyTypeAnnotation = isEmptyTypeAnnotation;
+    exports2.isEnumBody = isEnumBody;
+    exports2.isEnumBooleanBody = isEnumBooleanBody;
+    exports2.isEnumBooleanMember = isEnumBooleanMember;
+    exports2.isEnumDeclaration = isEnumDeclaration;
+    exports2.isEnumDefaultedMember = isEnumDefaultedMember;
+    exports2.isEnumMember = isEnumMember;
+    exports2.isEnumNumberBody = isEnumNumberBody;
+    exports2.isEnumNumberMember = isEnumNumberMember;
+    exports2.isEnumStringBody = isEnumStringBody;
+    exports2.isEnumStringMember = isEnumStringMember;
+    exports2.isEnumSymbolBody = isEnumSymbolBody;
+    exports2.isExistsTypeAnnotation = isExistsTypeAnnotation;
+    exports2.isExportAllDeclaration = isExportAllDeclaration;
+    exports2.isExportDeclaration = isExportDeclaration;
+    exports2.isExportDefaultDeclaration = isExportDefaultDeclaration;
+    exports2.isExportDefaultSpecifier = isExportDefaultSpecifier;
+    exports2.isExportNamedDeclaration = isExportNamedDeclaration;
+    exports2.isExportNamespaceSpecifier = isExportNamespaceSpecifier;
+    exports2.isExportSpecifier = isExportSpecifier;
+    exports2.isExpression = isExpression;
+    exports2.isExpressionStatement = isExpressionStatement;
+    exports2.isExpressionWrapper = isExpressionWrapper;
+    exports2.isFile = isFile;
+    exports2.isFlow = isFlow;
+    exports2.isFlowBaseAnnotation = isFlowBaseAnnotation;
+    exports2.isFlowDeclaration = isFlowDeclaration;
+    exports2.isFlowPredicate = isFlowPredicate;
+    exports2.isFlowType = isFlowType;
+    exports2.isFor = isFor;
+    exports2.isForInStatement = isForInStatement;
+    exports2.isForOfStatement = isForOfStatement;
+    exports2.isForStatement = isForStatement;
+    exports2.isForXStatement = isForXStatement;
+    exports2.isFunction = isFunction;
+    exports2.isFunctionDeclaration = isFunctionDeclaration;
+    exports2.isFunctionExpression = isFunctionExpression;
+    exports2.isFunctionParent = isFunctionParent;
+    exports2.isFunctionTypeAnnotation = isFunctionTypeAnnotation;
+    exports2.isFunctionTypeParam = isFunctionTypeParam;
+    exports2.isGenericTypeAnnotation = isGenericTypeAnnotation;
+    exports2.isIdentifier = isIdentifier;
+    exports2.isIfStatement = isIfStatement;
+    exports2.isImmutable = isImmutable;
+    exports2.isImport = isImport;
+    exports2.isImportAttribute = isImportAttribute;
+    exports2.isImportDeclaration = isImportDeclaration;
+    exports2.isImportDefaultSpecifier = isImportDefaultSpecifier;
+    exports2.isImportExpression = isImportExpression;
+    exports2.isImportNamespaceSpecifier = isImportNamespaceSpecifier;
+    exports2.isImportOrExportDeclaration = isImportOrExportDeclaration;
+    exports2.isImportSpecifier = isImportSpecifier;
+    exports2.isIndexedAccessType = isIndexedAccessType;
+    exports2.isInferredPredicate = isInferredPredicate;
+    exports2.isInterfaceDeclaration = isInterfaceDeclaration;
+    exports2.isInterfaceExtends = isInterfaceExtends;
+    exports2.isInterfaceTypeAnnotation = isInterfaceTypeAnnotation;
+    exports2.isInterpreterDirective = isInterpreterDirective;
+    exports2.isIntersectionTypeAnnotation = isIntersectionTypeAnnotation;
+    exports2.isJSX = isJSX;
+    exports2.isJSXAttribute = isJSXAttribute;
+    exports2.isJSXClosingElement = isJSXClosingElement;
+    exports2.isJSXClosingFragment = isJSXClosingFragment;
+    exports2.isJSXElement = isJSXElement;
+    exports2.isJSXEmptyExpression = isJSXEmptyExpression;
+    exports2.isJSXExpressionContainer = isJSXExpressionContainer;
+    exports2.isJSXFragment = isJSXFragment;
+    exports2.isJSXIdentifier = isJSXIdentifier;
+    exports2.isJSXMemberExpression = isJSXMemberExpression;
+    exports2.isJSXNamespacedName = isJSXNamespacedName;
+    exports2.isJSXOpeningElement = isJSXOpeningElement;
+    exports2.isJSXOpeningFragment = isJSXOpeningFragment;
+    exports2.isJSXSpreadAttribute = isJSXSpreadAttribute;
+    exports2.isJSXSpreadChild = isJSXSpreadChild;
+    exports2.isJSXText = isJSXText;
+    exports2.isLVal = isLVal;
+    exports2.isLabeledStatement = isLabeledStatement;
+    exports2.isLiteral = isLiteral;
+    exports2.isLogicalExpression = isLogicalExpression;
+    exports2.isLoop = isLoop;
+    exports2.isMemberExpression = isMemberExpression;
+    exports2.isMetaProperty = isMetaProperty;
+    exports2.isMethod = isMethod;
+    exports2.isMiscellaneous = isMiscellaneous;
+    exports2.isMixedTypeAnnotation = isMixedTypeAnnotation;
+    exports2.isModuleDeclaration = isModuleDeclaration;
+    exports2.isModuleExpression = isModuleExpression;
+    exports2.isModuleSpecifier = isModuleSpecifier;
+    exports2.isNewExpression = isNewExpression;
+    exports2.isNoop = isNoop;
+    exports2.isNullLiteral = isNullLiteral;
+    exports2.isNullLiteralTypeAnnotation = isNullLiteralTypeAnnotation;
+    exports2.isNullableTypeAnnotation = isNullableTypeAnnotation;
+    exports2.isNumberLiteral = isNumberLiteral;
+    exports2.isNumberLiteralTypeAnnotation = isNumberLiteralTypeAnnotation;
+    exports2.isNumberTypeAnnotation = isNumberTypeAnnotation;
+    exports2.isNumericLiteral = isNumericLiteral;
+    exports2.isObjectExpression = isObjectExpression;
+    exports2.isObjectMember = isObjectMember;
+    exports2.isObjectMethod = isObjectMethod;
+    exports2.isObjectPattern = isObjectPattern;
+    exports2.isObjectProperty = isObjectProperty;
+    exports2.isObjectTypeAnnotation = isObjectTypeAnnotation;
+    exports2.isObjectTypeCallProperty = isObjectTypeCallProperty;
+    exports2.isObjectTypeIndexer = isObjectTypeIndexer;
+    exports2.isObjectTypeInternalSlot = isObjectTypeInternalSlot;
+    exports2.isObjectTypeProperty = isObjectTypeProperty;
+    exports2.isObjectTypeSpreadProperty = isObjectTypeSpreadProperty;
+    exports2.isOpaqueType = isOpaqueType;
+    exports2.isOptionalCallExpression = isOptionalCallExpression;
+    exports2.isOptionalIndexedAccessType = isOptionalIndexedAccessType;
+    exports2.isOptionalMemberExpression = isOptionalMemberExpression;
+    exports2.isParenthesizedExpression = isParenthesizedExpression;
+    exports2.isPattern = isPattern;
+    exports2.isPatternLike = isPatternLike;
+    exports2.isPipelineBareFunction = isPipelineBareFunction;
+    exports2.isPipelinePrimaryTopicReference = isPipelinePrimaryTopicReference;
+    exports2.isPipelineTopicExpression = isPipelineTopicExpression;
+    exports2.isPlaceholder = isPlaceholder;
+    exports2.isPrivate = isPrivate;
+    exports2.isPrivateName = isPrivateName;
+    exports2.isProgram = isProgram;
+    exports2.isProperty = isProperty;
+    exports2.isPureish = isPureish;
+    exports2.isQualifiedTypeIdentifier = isQualifiedTypeIdentifier;
+    exports2.isRecordExpression = isRecordExpression;
+    exports2.isRegExpLiteral = isRegExpLiteral;
+    exports2.isRegexLiteral = isRegexLiteral;
+    exports2.isRestElement = isRestElement;
+    exports2.isRestProperty = isRestProperty;
+    exports2.isReturnStatement = isReturnStatement;
+    exports2.isScopable = isScopable;
+    exports2.isSequenceExpression = isSequenceExpression;
+    exports2.isSpreadElement = isSpreadElement;
+    exports2.isSpreadProperty = isSpreadProperty;
+    exports2.isStandardized = isStandardized;
+    exports2.isStatement = isStatement;
+    exports2.isStaticBlock = isStaticBlock;
+    exports2.isStringLiteral = isStringLiteral;
+    exports2.isStringLiteralTypeAnnotation = isStringLiteralTypeAnnotation;
+    exports2.isStringTypeAnnotation = isStringTypeAnnotation;
+    exports2.isSuper = isSuper;
+    exports2.isSwitchCase = isSwitchCase;
+    exports2.isSwitchStatement = isSwitchStatement;
+    exports2.isSymbolTypeAnnotation = isSymbolTypeAnnotation;
+    exports2.isTSAnyKeyword = isTSAnyKeyword;
+    exports2.isTSArrayType = isTSArrayType;
+    exports2.isTSAsExpression = isTSAsExpression;
+    exports2.isTSBaseType = isTSBaseType;
+    exports2.isTSBigIntKeyword = isTSBigIntKeyword;
+    exports2.isTSBooleanKeyword = isTSBooleanKeyword;
+    exports2.isTSCallSignatureDeclaration = isTSCallSignatureDeclaration;
+    exports2.isTSConditionalType = isTSConditionalType;
+    exports2.isTSConstructSignatureDeclaration = isTSConstructSignatureDeclaration;
+    exports2.isTSConstructorType = isTSConstructorType;
+    exports2.isTSDeclareFunction = isTSDeclareFunction;
+    exports2.isTSDeclareMethod = isTSDeclareMethod;
+    exports2.isTSEntityName = isTSEntityName;
+    exports2.isTSEnumBody = isTSEnumBody;
+    exports2.isTSEnumDeclaration = isTSEnumDeclaration;
+    exports2.isTSEnumMember = isTSEnumMember;
+    exports2.isTSExportAssignment = isTSExportAssignment;
+    exports2.isTSExpressionWithTypeArguments = isTSExpressionWithTypeArguments;
+    exports2.isTSExternalModuleReference = isTSExternalModuleReference;
+    exports2.isTSFunctionType = isTSFunctionType;
+    exports2.isTSImportEqualsDeclaration = isTSImportEqualsDeclaration;
+    exports2.isTSImportType = isTSImportType;
+    exports2.isTSIndexSignature = isTSIndexSignature;
+    exports2.isTSIndexedAccessType = isTSIndexedAccessType;
+    exports2.isTSInferType = isTSInferType;
+    exports2.isTSInstantiationExpression = isTSInstantiationExpression;
+    exports2.isTSInterfaceBody = isTSInterfaceBody;
+    exports2.isTSInterfaceDeclaration = isTSInterfaceDeclaration;
+    exports2.isTSIntersectionType = isTSIntersectionType;
+    exports2.isTSIntrinsicKeyword = isTSIntrinsicKeyword;
+    exports2.isTSLiteralType = isTSLiteralType;
+    exports2.isTSMappedType = isTSMappedType;
+    exports2.isTSMethodSignature = isTSMethodSignature;
+    exports2.isTSModuleBlock = isTSModuleBlock;
+    exports2.isTSModuleDeclaration = isTSModuleDeclaration;
+    exports2.isTSNamedTupleMember = isTSNamedTupleMember;
+    exports2.isTSNamespaceExportDeclaration = isTSNamespaceExportDeclaration;
+    exports2.isTSNeverKeyword = isTSNeverKeyword;
+    exports2.isTSNonNullExpression = isTSNonNullExpression;
+    exports2.isTSNullKeyword = isTSNullKeyword;
+    exports2.isTSNumberKeyword = isTSNumberKeyword;
+    exports2.isTSObjectKeyword = isTSObjectKeyword;
+    exports2.isTSOptionalType = isTSOptionalType;
+    exports2.isTSParameterProperty = isTSParameterProperty;
+    exports2.isTSParenthesizedType = isTSParenthesizedType;
+    exports2.isTSPropertySignature = isTSPropertySignature;
+    exports2.isTSQualifiedName = isTSQualifiedName;
+    exports2.isTSRestType = isTSRestType;
+    exports2.isTSSatisfiesExpression = isTSSatisfiesExpression;
+    exports2.isTSStringKeyword = isTSStringKeyword;
+    exports2.isTSSymbolKeyword = isTSSymbolKeyword;
+    exports2.isTSTemplateLiteralType = isTSTemplateLiteralType;
+    exports2.isTSThisType = isTSThisType;
+    exports2.isTSTupleType = isTSTupleType;
+    exports2.isTSType = isTSType;
+    exports2.isTSTypeAliasDeclaration = isTSTypeAliasDeclaration;
+    exports2.isTSTypeAnnotation = isTSTypeAnnotation;
+    exports2.isTSTypeAssertion = isTSTypeAssertion;
+    exports2.isTSTypeElement = isTSTypeElement;
+    exports2.isTSTypeLiteral = isTSTypeLiteral;
+    exports2.isTSTypeOperator = isTSTypeOperator;
+    exports2.isTSTypeParameter = isTSTypeParameter;
+    exports2.isTSTypeParameterDeclaration = isTSTypeParameterDeclaration;
+    exports2.isTSTypeParameterInstantiation = isTSTypeParameterInstantiation;
+    exports2.isTSTypePredicate = isTSTypePredicate;
+    exports2.isTSTypeQuery = isTSTypeQuery;
+    exports2.isTSTypeReference = isTSTypeReference;
+    exports2.isTSUndefinedKeyword = isTSUndefinedKeyword;
+    exports2.isTSUnionType = isTSUnionType;
+    exports2.isTSUnknownKeyword = isTSUnknownKeyword;
+    exports2.isTSVoidKeyword = isTSVoidKeyword;
+    exports2.isTaggedTemplateExpression = isTaggedTemplateExpression;
+    exports2.isTemplateElement = isTemplateElement;
+    exports2.isTemplateLiteral = isTemplateLiteral;
+    exports2.isTerminatorless = isTerminatorless;
+    exports2.isThisExpression = isThisExpression;
+    exports2.isThisTypeAnnotation = isThisTypeAnnotation;
+    exports2.isThrowStatement = isThrowStatement;
+    exports2.isTopicReference = isTopicReference;
+    exports2.isTryStatement = isTryStatement;
+    exports2.isTupleExpression = isTupleExpression;
+    exports2.isTupleTypeAnnotation = isTupleTypeAnnotation;
+    exports2.isTypeAlias = isTypeAlias;
+    exports2.isTypeAnnotation = isTypeAnnotation;
+    exports2.isTypeCastExpression = isTypeCastExpression;
+    exports2.isTypeParameter = isTypeParameter;
+    exports2.isTypeParameterDeclaration = isTypeParameterDeclaration;
+    exports2.isTypeParameterInstantiation = isTypeParameterInstantiation;
+    exports2.isTypeScript = isTypeScript;
+    exports2.isTypeofTypeAnnotation = isTypeofTypeAnnotation;
+    exports2.isUnaryExpression = isUnaryExpression;
+    exports2.isUnaryLike = isUnaryLike;
+    exports2.isUnionTypeAnnotation = isUnionTypeAnnotation;
+    exports2.isUpdateExpression = isUpdateExpression;
+    exports2.isUserWhitespacable = isUserWhitespacable;
+    exports2.isV8IntrinsicIdentifier = isV8IntrinsicIdentifier;
+    exports2.isVariableDeclaration = isVariableDeclaration;
+    exports2.isVariableDeclarator = isVariableDeclarator;
+    exports2.isVariance = isVariance;
+    exports2.isVoidTypeAnnotation = isVoidTypeAnnotation;
+    exports2.isWhile = isWhile;
+    exports2.isWhileStatement = isWhileStatement;
+    exports2.isWithStatement = isWithStatement;
+    exports2.isYieldExpression = isYieldExpression;
     var _shallowEqual = require_shallowEqual();
     var _deprecationWarning = require_deprecationWarning();
     function isArrayExpression(node, opts) {
@@ -3450,12 +7143,12 @@ var require_generated = __commonJS({
 
 // node_modules/@babel/types/lib/validators/matchesPattern.js
 var require_matchesPattern = __commonJS({
-  "node_modules/@babel/types/lib/validators/matchesPattern.js"(exports) {
+  "node_modules/@babel/types/lib/validators/matchesPattern.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = matchesPattern;
+    exports2.default = matchesPattern;
     var _index = require_generated();
     function matchesPattern(member, match, allowPartial) {
       if (!(0, _index.isMemberExpression)(member))
@@ -3493,12 +7186,12 @@ var require_matchesPattern = __commonJS({
 
 // node_modules/@babel/types/lib/validators/buildMatchMemberExpression.js
 var require_buildMatchMemberExpression = __commonJS({
-  "node_modules/@babel/types/lib/validators/buildMatchMemberExpression.js"(exports) {
+  "node_modules/@babel/types/lib/validators/buildMatchMemberExpression.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = buildMatchMemberExpression;
+    exports2.default = buildMatchMemberExpression;
     var _matchesPattern = require_matchesPattern();
     function buildMatchMemberExpression(match, allowPartial) {
       const parts = match.split(".");
@@ -3509,26 +7202,26 @@ var require_buildMatchMemberExpression = __commonJS({
 
 // node_modules/@babel/types/lib/validators/react/isReactComponent.js
 var require_isReactComponent = __commonJS({
-  "node_modules/@babel/types/lib/validators/react/isReactComponent.js"(exports) {
+  "node_modules/@babel/types/lib/validators/react/isReactComponent.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _buildMatchMemberExpression = require_buildMatchMemberExpression();
     var isReactComponent = (0, _buildMatchMemberExpression.default)("React.Component");
-    var _default3 = exports.default = isReactComponent;
+    var _default3 = exports2.default = isReactComponent;
   }
 });
 
 // node_modules/@babel/types/lib/validators/react/isCompatTag.js
 var require_isCompatTag = __commonJS({
-  "node_modules/@babel/types/lib/validators/react/isCompatTag.js"(exports) {
+  "node_modules/@babel/types/lib/validators/react/isCompatTag.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isCompatTag;
+    exports2.default = isCompatTag;
     function isCompatTag(tagName) {
       return !!tagName && /^[a-z]/.test(tagName);
     }
@@ -3537,12 +7230,12 @@ var require_isCompatTag = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isType.js
 var require_isType = __commonJS({
-  "node_modules/@babel/types/lib/validators/isType.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isType.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isType;
+    exports2.default = isType;
     var _index = require_definitions();
     function isType(nodeType, targetType) {
       if (nodeType === targetType)
@@ -3561,12 +7254,12 @@ var require_isType = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isPlaceholderType.js
 var require_isPlaceholderType = __commonJS({
-  "node_modules/@babel/types/lib/validators/isPlaceholderType.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isPlaceholderType.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isPlaceholderType;
+    exports2.default = isPlaceholderType;
     var _index = require_definitions();
     function isPlaceholderType(placeholderType, targetType) {
       if (placeholderType === targetType)
@@ -3581,12 +7274,12 @@ var require_isPlaceholderType = __commonJS({
 
 // node_modules/@babel/types/lib/validators/is.js
 var require_is = __commonJS({
-  "node_modules/@babel/types/lib/validators/is.js"(exports) {
+  "node_modules/@babel/types/lib/validators/is.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = is2;
+    exports2.default = is2;
     var _shallowEqual = require_shallowEqual();
     var _isType = require_isType();
     var _isPlaceholderType = require_isPlaceholderType();
@@ -3612,14 +7305,14 @@ var require_is = __commonJS({
 
 // node_modules/@babel/helper-validator-identifier/lib/identifier.js
 var require_identifier = __commonJS({
-  "node_modules/@babel/helper-validator-identifier/lib/identifier.js"(exports) {
+  "node_modules/@babel/helper-validator-identifier/lib/identifier.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.isIdentifierChar = isIdentifierChar;
-    exports.isIdentifierName = isIdentifierName;
-    exports.isIdentifierStart = isIdentifierStart;
+    exports2.isIdentifierChar = isIdentifierChar;
+    exports2.isIdentifierName = isIdentifierName;
+    exports2.isIdentifierStart = isIdentifierStart;
     var nonASCIIidentifierStartChars = "\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0560-\u0588\u05D0-\u05EA\u05EF-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u0860-\u086A\u0870-\u0887\u0889-\u088E\u08A0-\u08C9\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u09FC\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0AF9\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58-\u0C5A\u0C5D\u0C60\u0C61\u0C80\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D04-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D54-\u0D56\u0D5F-\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E86-\u0E8A\u0E8C-\u0EA3\u0EA5\u0EA7-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u1711\u171F-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1878\u1880-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4C\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1C80-\u1C8A\u1C90-\u1CBA\u1CBD-\u1CBF\u1CE9-\u1CEC\u1CEE-\u1CF3\u1CF5\u1CF6\u1CFA\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2118-\u211D\u2124\u2126\u2128\u212A-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309B-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312F\u3131-\u318E\u31A0-\u31BF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA7CD\uA7D0\uA7D1\uA7D3\uA7D5-\uA7DC\uA7F2-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA8FD\uA8FE\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB69\uAB70-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC";
     var nonASCIIidentifierChars = "\xB7\u0300-\u036F\u0387\u0483-\u0487\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u0610-\u061A\u064B-\u0669\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u06F0-\u06F9\u0711\u0730-\u074A\u07A6-\u07B0\u07C0-\u07C9\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u0897-\u089F\u08CA-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0966-\u096F\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09E6-\u09EF\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A66-\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AE6-\u0AEF\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B55-\u0B57\u0B62\u0B63\u0B66-\u0B6F\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0BE6-\u0BEF\u0C00-\u0C04\u0C3C\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C66-\u0C6F\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0CE6-\u0CEF\u0CF3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D66-\u0D6F\u0D81-\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0E50-\u0E59\u0EB1\u0EB4-\u0EBC\u0EC8-\u0ECE\u0ED0-\u0ED9\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1040-\u1049\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F-\u109D\u135D-\u135F\u1369-\u1371\u1712-\u1715\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u17E0-\u17E9\u180B-\u180D\u180F-\u1819\u18A9\u1920-\u192B\u1930-\u193B\u1946-\u194F\u19D0-\u19DA\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AB0-\u1ABD\u1ABF-\u1ACE\u1B00-\u1B04\u1B34-\u1B44\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BB0-\u1BB9\u1BE6-\u1BF3\u1C24-\u1C37\u1C40-\u1C49\u1C50-\u1C59\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DFF\u200C\u200D\u203F\u2040\u2054\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\u30FB\uA620-\uA629\uA66F\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA82C\uA880\uA881\uA8B4-\uA8C5\uA8D0-\uA8D9\uA8E0-\uA8F1\uA8FF-\uA909\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9D0-\uA9D9\uA9E5\uA9F0-\uA9F9\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA50-\uAA59\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uABF0-\uABF9\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F\uFE33\uFE34\uFE4D-\uFE4F\uFF10-\uFF19\uFF3F\uFF65";
     var nonASCIIidentifierStart = new RegExp("[" + nonASCIIidentifierStartChars + "]");
@@ -3697,16 +7390,16 @@ var require_identifier = __commonJS({
 
 // node_modules/@babel/helper-validator-identifier/lib/keyword.js
 var require_keyword = __commonJS({
-  "node_modules/@babel/helper-validator-identifier/lib/keyword.js"(exports) {
+  "node_modules/@babel/helper-validator-identifier/lib/keyword.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.isKeyword = isKeyword;
-    exports.isReservedWord = isReservedWord;
-    exports.isStrictBindOnlyReservedWord = isStrictBindOnlyReservedWord;
-    exports.isStrictBindReservedWord = isStrictBindReservedWord;
-    exports.isStrictReservedWord = isStrictReservedWord;
+    exports2.isKeyword = isKeyword;
+    exports2.isReservedWord = isReservedWord;
+    exports2.isStrictBindOnlyReservedWord = isStrictBindOnlyReservedWord;
+    exports2.isStrictBindReservedWord = isStrictBindReservedWord;
+    exports2.isStrictReservedWord = isStrictReservedWord;
     var reservedWords = {
       keyword: ["break", "case", "catch", "continue", "debugger", "default", "do", "else", "finally", "for", "function", "if", "return", "switch", "throw", "try", "var", "const", "while", "with", "new", "this", "super", "class", "extends", "export", "import", "null", "true", "false", "in", "instanceof", "typeof", "void", "delete"],
       strict: ["implements", "interface", "let", "package", "private", "protected", "public", "static", "yield"],
@@ -3735,54 +7428,54 @@ var require_keyword = __commonJS({
 
 // node_modules/@babel/helper-validator-identifier/lib/index.js
 var require_lib = __commonJS({
-  "node_modules/@babel/helper-validator-identifier/lib/index.js"(exports) {
+  "node_modules/@babel/helper-validator-identifier/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "isIdentifierChar", {
+    Object.defineProperty(exports2, "isIdentifierChar", {
       enumerable: true,
       get: function() {
         return _identifier.isIdentifierChar;
       }
     });
-    Object.defineProperty(exports, "isIdentifierName", {
+    Object.defineProperty(exports2, "isIdentifierName", {
       enumerable: true,
       get: function() {
         return _identifier.isIdentifierName;
       }
     });
-    Object.defineProperty(exports, "isIdentifierStart", {
+    Object.defineProperty(exports2, "isIdentifierStart", {
       enumerable: true,
       get: function() {
         return _identifier.isIdentifierStart;
       }
     });
-    Object.defineProperty(exports, "isKeyword", {
+    Object.defineProperty(exports2, "isKeyword", {
       enumerable: true,
       get: function() {
         return _keyword.isKeyword;
       }
     });
-    Object.defineProperty(exports, "isReservedWord", {
+    Object.defineProperty(exports2, "isReservedWord", {
       enumerable: true,
       get: function() {
         return _keyword.isReservedWord;
       }
     });
-    Object.defineProperty(exports, "isStrictBindOnlyReservedWord", {
+    Object.defineProperty(exports2, "isStrictBindOnlyReservedWord", {
       enumerable: true,
       get: function() {
         return _keyword.isStrictBindOnlyReservedWord;
       }
     });
-    Object.defineProperty(exports, "isStrictBindReservedWord", {
+    Object.defineProperty(exports2, "isStrictBindReservedWord", {
       enumerable: true,
       get: function() {
         return _keyword.isStrictBindReservedWord;
       }
     });
-    Object.defineProperty(exports, "isStrictReservedWord", {
+    Object.defineProperty(exports2, "isStrictReservedWord", {
       enumerable: true,
       get: function() {
         return _keyword.isStrictReservedWord;
@@ -3795,12 +7488,12 @@ var require_lib = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isValidIdentifier.js
 var require_isValidIdentifier = __commonJS({
-  "node_modules/@babel/types/lib/validators/isValidIdentifier.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isValidIdentifier.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isValidIdentifier;
+    exports2.default = isValidIdentifier;
     var _helperValidatorIdentifier = require_lib();
     function isValidIdentifier(name, reserved = true) {
       if (typeof name !== "string")
@@ -3817,14 +7510,14 @@ var require_isValidIdentifier = __commonJS({
 
 // node_modules/@babel/helper-string-parser/lib/index.js
 var require_lib2 = __commonJS({
-  "node_modules/@babel/helper-string-parser/lib/index.js"(exports) {
+  "node_modules/@babel/helper-string-parser/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.readCodePoint = readCodePoint;
-    exports.readInt = readInt;
-    exports.readStringContents = readStringContents;
+    exports2.readCodePoint = readCodePoint;
+    exports2.readInt = readInt;
+    exports2.readStringContents = readStringContents;
     var _isDigit = function isDigit(code) {
       return code >= 48 && code <= 57;
     };
@@ -4114,75 +7807,75 @@ var require_lib2 = __commonJS({
 });
 
 // node_modules/@babel/types/lib/constants/index.js
-var require_constants = __commonJS({
-  "node_modules/@babel/types/lib/constants/index.js"(exports) {
+var require_constants2 = __commonJS({
+  "node_modules/@babel/types/lib/constants/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.UPDATE_OPERATORS = exports.UNARY_OPERATORS = exports.STRING_UNARY_OPERATORS = exports.STATEMENT_OR_BLOCK_KEYS = exports.NUMBER_UNARY_OPERATORS = exports.NUMBER_BINARY_OPERATORS = exports.LOGICAL_OPERATORS = exports.INHERIT_KEYS = exports.FOR_INIT_KEYS = exports.FLATTENABLE_KEYS = exports.EQUALITY_BINARY_OPERATORS = exports.COMPARISON_BINARY_OPERATORS = exports.COMMENT_KEYS = exports.BOOLEAN_UNARY_OPERATORS = exports.BOOLEAN_NUMBER_BINARY_OPERATORS = exports.BOOLEAN_BINARY_OPERATORS = exports.BINARY_OPERATORS = exports.ASSIGNMENT_OPERATORS = void 0;
-    var STATEMENT_OR_BLOCK_KEYS = exports.STATEMENT_OR_BLOCK_KEYS = ["consequent", "body", "alternate"];
-    var FLATTENABLE_KEYS = exports.FLATTENABLE_KEYS = ["body", "expressions"];
-    var FOR_INIT_KEYS = exports.FOR_INIT_KEYS = ["left", "init"];
-    var COMMENT_KEYS = exports.COMMENT_KEYS = ["leadingComments", "trailingComments", "innerComments"];
-    var LOGICAL_OPERATORS = exports.LOGICAL_OPERATORS = ["||", "&&", "??"];
-    var UPDATE_OPERATORS = exports.UPDATE_OPERATORS = ["++", "--"];
-    var BOOLEAN_NUMBER_BINARY_OPERATORS = exports.BOOLEAN_NUMBER_BINARY_OPERATORS = [">", "<", ">=", "<="];
-    var EQUALITY_BINARY_OPERATORS = exports.EQUALITY_BINARY_OPERATORS = ["==", "===", "!=", "!=="];
-    var COMPARISON_BINARY_OPERATORS = exports.COMPARISON_BINARY_OPERATORS = [...EQUALITY_BINARY_OPERATORS, "in", "instanceof"];
-    var BOOLEAN_BINARY_OPERATORS = exports.BOOLEAN_BINARY_OPERATORS = [...COMPARISON_BINARY_OPERATORS, ...BOOLEAN_NUMBER_BINARY_OPERATORS];
-    var NUMBER_BINARY_OPERATORS = exports.NUMBER_BINARY_OPERATORS = ["-", "/", "%", "*", "**", "&", "|", ">>", ">>>", "<<", "^"];
-    var BINARY_OPERATORS = exports.BINARY_OPERATORS = ["+", ...NUMBER_BINARY_OPERATORS, ...BOOLEAN_BINARY_OPERATORS, "|>"];
-    var ASSIGNMENT_OPERATORS = exports.ASSIGNMENT_OPERATORS = ["=", "+=", ...NUMBER_BINARY_OPERATORS.map((op) => op + "="), ...LOGICAL_OPERATORS.map((op) => op + "=")];
-    var BOOLEAN_UNARY_OPERATORS = exports.BOOLEAN_UNARY_OPERATORS = ["delete", "!"];
-    var NUMBER_UNARY_OPERATORS = exports.NUMBER_UNARY_OPERATORS = ["+", "-", "~"];
-    var STRING_UNARY_OPERATORS = exports.STRING_UNARY_OPERATORS = ["typeof"];
-    var UNARY_OPERATORS = exports.UNARY_OPERATORS = ["void", "throw", ...BOOLEAN_UNARY_OPERATORS, ...NUMBER_UNARY_OPERATORS, ...STRING_UNARY_OPERATORS];
-    var INHERIT_KEYS = exports.INHERIT_KEYS = {
+    exports2.UPDATE_OPERATORS = exports2.UNARY_OPERATORS = exports2.STRING_UNARY_OPERATORS = exports2.STATEMENT_OR_BLOCK_KEYS = exports2.NUMBER_UNARY_OPERATORS = exports2.NUMBER_BINARY_OPERATORS = exports2.LOGICAL_OPERATORS = exports2.INHERIT_KEYS = exports2.FOR_INIT_KEYS = exports2.FLATTENABLE_KEYS = exports2.EQUALITY_BINARY_OPERATORS = exports2.COMPARISON_BINARY_OPERATORS = exports2.COMMENT_KEYS = exports2.BOOLEAN_UNARY_OPERATORS = exports2.BOOLEAN_NUMBER_BINARY_OPERATORS = exports2.BOOLEAN_BINARY_OPERATORS = exports2.BINARY_OPERATORS = exports2.ASSIGNMENT_OPERATORS = void 0;
+    var STATEMENT_OR_BLOCK_KEYS = exports2.STATEMENT_OR_BLOCK_KEYS = ["consequent", "body", "alternate"];
+    var FLATTENABLE_KEYS = exports2.FLATTENABLE_KEYS = ["body", "expressions"];
+    var FOR_INIT_KEYS = exports2.FOR_INIT_KEYS = ["left", "init"];
+    var COMMENT_KEYS = exports2.COMMENT_KEYS = ["leadingComments", "trailingComments", "innerComments"];
+    var LOGICAL_OPERATORS = exports2.LOGICAL_OPERATORS = ["||", "&&", "??"];
+    var UPDATE_OPERATORS = exports2.UPDATE_OPERATORS = ["++", "--"];
+    var BOOLEAN_NUMBER_BINARY_OPERATORS = exports2.BOOLEAN_NUMBER_BINARY_OPERATORS = [">", "<", ">=", "<="];
+    var EQUALITY_BINARY_OPERATORS = exports2.EQUALITY_BINARY_OPERATORS = ["==", "===", "!=", "!=="];
+    var COMPARISON_BINARY_OPERATORS = exports2.COMPARISON_BINARY_OPERATORS = [...EQUALITY_BINARY_OPERATORS, "in", "instanceof"];
+    var BOOLEAN_BINARY_OPERATORS = exports2.BOOLEAN_BINARY_OPERATORS = [...COMPARISON_BINARY_OPERATORS, ...BOOLEAN_NUMBER_BINARY_OPERATORS];
+    var NUMBER_BINARY_OPERATORS = exports2.NUMBER_BINARY_OPERATORS = ["-", "/", "%", "*", "**", "&", "|", ">>", ">>>", "<<", "^"];
+    var BINARY_OPERATORS = exports2.BINARY_OPERATORS = ["+", ...NUMBER_BINARY_OPERATORS, ...BOOLEAN_BINARY_OPERATORS, "|>"];
+    var ASSIGNMENT_OPERATORS = exports2.ASSIGNMENT_OPERATORS = ["=", "+=", ...NUMBER_BINARY_OPERATORS.map((op) => op + "="), ...LOGICAL_OPERATORS.map((op) => op + "=")];
+    var BOOLEAN_UNARY_OPERATORS = exports2.BOOLEAN_UNARY_OPERATORS = ["delete", "!"];
+    var NUMBER_UNARY_OPERATORS = exports2.NUMBER_UNARY_OPERATORS = ["+", "-", "~"];
+    var STRING_UNARY_OPERATORS = exports2.STRING_UNARY_OPERATORS = ["typeof"];
+    var UNARY_OPERATORS = exports2.UNARY_OPERATORS = ["void", "throw", ...BOOLEAN_UNARY_OPERATORS, ...NUMBER_UNARY_OPERATORS, ...STRING_UNARY_OPERATORS];
+    var INHERIT_KEYS = exports2.INHERIT_KEYS = {
       optional: ["typeAnnotation", "typeParameters", "returnType"],
       force: ["start", "loc", "end"]
     };
     {
-      exports.BLOCK_SCOPED_SYMBOL = Symbol.for("var used to be block scoped");
-      exports.NOT_LOCAL_BINDING = Symbol.for("should not be considered a local binding");
+      exports2.BLOCK_SCOPED_SYMBOL = Symbol.for("var used to be block scoped");
+      exports2.NOT_LOCAL_BINDING = Symbol.for("should not be considered a local binding");
     }
   }
 });
 
 // node_modules/@babel/types/lib/definitions/utils.js
 var require_utils = __commonJS({
-  "node_modules/@babel/types/lib/definitions/utils.js"(exports) {
+  "node_modules/@babel/types/lib/definitions/utils.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.allExpandedTypes = exports.VISITOR_KEYS = exports.NODE_PARENT_VALIDATIONS = exports.NODE_FIELDS = exports.FLIPPED_ALIAS_KEYS = exports.DEPRECATED_KEYS = exports.BUILDER_KEYS = exports.ALIAS_KEYS = void 0;
-    exports.arrayOf = arrayOf;
-    exports.arrayOfType = arrayOfType;
-    exports.assertEach = assertEach;
-    exports.assertNodeOrValueType = assertNodeOrValueType;
-    exports.assertNodeType = assertNodeType;
-    exports.assertOneOf = assertOneOf;
-    exports.assertOptionalChainStart = assertOptionalChainStart;
-    exports.assertShape = assertShape;
-    exports.assertValueType = assertValueType;
-    exports.chain = chain;
-    exports.default = defineType;
-    exports.defineAliasedType = defineAliasedType;
-    exports.validate = validate;
-    exports.validateArrayOfType = validateArrayOfType;
-    exports.validateOptional = validateOptional;
-    exports.validateOptionalType = validateOptionalType;
-    exports.validateType = validateType;
+    exports2.allExpandedTypes = exports2.VISITOR_KEYS = exports2.NODE_PARENT_VALIDATIONS = exports2.NODE_FIELDS = exports2.FLIPPED_ALIAS_KEYS = exports2.DEPRECATED_KEYS = exports2.BUILDER_KEYS = exports2.ALIAS_KEYS = void 0;
+    exports2.arrayOf = arrayOf;
+    exports2.arrayOfType = arrayOfType;
+    exports2.assertEach = assertEach;
+    exports2.assertNodeOrValueType = assertNodeOrValueType;
+    exports2.assertNodeType = assertNodeType;
+    exports2.assertOneOf = assertOneOf;
+    exports2.assertOptionalChainStart = assertOptionalChainStart;
+    exports2.assertShape = assertShape;
+    exports2.assertValueType = assertValueType;
+    exports2.chain = chain;
+    exports2.default = defineType;
+    exports2.defineAliasedType = defineAliasedType;
+    exports2.validate = validate;
+    exports2.validateArrayOfType = validateArrayOfType;
+    exports2.validateOptional = validateOptional;
+    exports2.validateOptionalType = validateOptionalType;
+    exports2.validateType = validateType;
     var _is = require_is();
     var _validate = require_validate();
-    var VISITOR_KEYS = exports.VISITOR_KEYS = {};
-    var ALIAS_KEYS = exports.ALIAS_KEYS = {};
-    var FLIPPED_ALIAS_KEYS = exports.FLIPPED_ALIAS_KEYS = {};
-    var NODE_FIELDS = exports.NODE_FIELDS = {};
-    var BUILDER_KEYS = exports.BUILDER_KEYS = {};
-    var DEPRECATED_KEYS = exports.DEPRECATED_KEYS = {};
-    var NODE_PARENT_VALIDATIONS = exports.NODE_PARENT_VALIDATIONS = {};
+    var VISITOR_KEYS = exports2.VISITOR_KEYS = {};
+    var ALIAS_KEYS = exports2.ALIAS_KEYS = {};
+    var FLIPPED_ALIAS_KEYS = exports2.FLIPPED_ALIAS_KEYS = {};
+    var NODE_FIELDS = exports2.NODE_FIELDS = {};
+    var BUILDER_KEYS = exports2.BUILDER_KEYS = {};
+    var DEPRECATED_KEYS = exports2.DEPRECATED_KEYS = {};
+    var NODE_PARENT_VALIDATIONS = exports2.NODE_PARENT_VALIDATIONS = {};
     function getType(val) {
       if (Array.isArray(val)) {
         return "array";
@@ -4251,7 +7944,7 @@ var require_utils = __commonJS({
       validate2.oneOf = values;
       return validate2;
     }
-    var allExpandedTypes = exports.allExpandedTypes = [];
+    var allExpandedTypes = exports2.allExpandedTypes = [];
     function assertNodeType(...types2) {
       const expandedTypes = /* @__PURE__ */ new Set();
       allExpandedTypes.push({
@@ -4452,17 +8145,17 @@ ${errors.join("\n")}`);
 
 // node_modules/@babel/types/lib/definitions/core.js
 var require_core = __commonJS({
-  "node_modules/@babel/types/lib/definitions/core.js"(exports) {
+  "node_modules/@babel/types/lib/definitions/core.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.patternLikeCommon = exports.importAttributes = exports.functionTypeAnnotationCommon = exports.functionDeclarationCommon = exports.functionCommon = exports.classMethodOrPropertyCommon = exports.classMethodOrDeclareMethodCommon = void 0;
+    exports2.patternLikeCommon = exports2.importAttributes = exports2.functionTypeAnnotationCommon = exports2.functionDeclarationCommon = exports2.functionCommon = exports2.classMethodOrPropertyCommon = exports2.classMethodOrDeclareMethodCommon = void 0;
     var _is = require_is();
     var _isValidIdentifier = require_isValidIdentifier();
     var _helperValidatorIdentifier = require_lib();
     var _helperStringParser = require_lib2();
-    var _index = require_constants();
+    var _index = require_constants2();
     var _utils = require_utils();
     var defineType = (0, _utils.defineAliasedType)("Standardized");
     defineType("ArrayExpression", {
@@ -4737,7 +8430,7 @@ var require_core = __commonJS({
         default: false
       }
     });
-    exports.functionCommon = functionCommon;
+    exports2.functionCommon = functionCommon;
     var functionTypeAnnotationCommon = () => ({
       returnType: {
         validate: (0, _utils.assertNodeType)("TypeAnnotation", "TSTypeAnnotation", "Noop"),
@@ -4748,7 +8441,7 @@ var require_core = __commonJS({
         optional: true
       }
     });
-    exports.functionTypeAnnotationCommon = functionTypeAnnotationCommon;
+    exports2.functionTypeAnnotationCommon = functionTypeAnnotationCommon;
     var functionDeclarationCommon = () => Object.assign({}, functionCommon(), {
       declare: {
         validate: (0, _utils.assertValueType)("boolean"),
@@ -4759,7 +8452,7 @@ var require_core = __commonJS({
         optional: true
       }
     });
-    exports.functionDeclarationCommon = functionDeclarationCommon;
+    exports2.functionDeclarationCommon = functionDeclarationCommon;
     defineType("FunctionDeclaration", {
       builder: ["id", "params", "body", "generator", "async"],
       visitor: ["id", "typeParameters", "params", "predicate", "returnType", "body"],
@@ -4813,7 +8506,7 @@ var require_core = __commonJS({
         optional: true
       }
     });
-    exports.patternLikeCommon = patternLikeCommon;
+    exports2.patternLikeCommon = patternLikeCommon;
     defineType("Identifier", {
       builder: ["name"],
       visitor: ["typeAnnotation", "decorators"],
@@ -5477,7 +9170,7 @@ var require_core = __commonJS({
         };
       }()
     });
-    var importAttributes = exports.importAttributes = {
+    var importAttributes = exports2.importAttributes = {
       attributes: {
         optional: true,
         validate: (0, _utils.arrayOfType)("ImportAttribute")
@@ -5738,7 +9431,7 @@ var require_core = __commonJS({
         }(), (0, _utils.assertNodeType)("Identifier", "StringLiteral", "NumericLiteral", "BigIntLiteral", "Expression"))
       }
     });
-    exports.classMethodOrPropertyCommon = classMethodOrPropertyCommon;
+    exports2.classMethodOrPropertyCommon = classMethodOrPropertyCommon;
     var classMethodOrDeclareMethodCommon = () => Object.assign({}, functionCommon(), classMethodOrPropertyCommon(), {
       params: (0, _utils.validateArrayOfType)("Identifier", "Pattern", "RestElement", "TSParameterProperty"),
       kind: {
@@ -5754,7 +9447,7 @@ var require_core = __commonJS({
         optional: true
       }
     });
-    exports.classMethodOrDeclareMethodCommon = classMethodOrDeclareMethodCommon;
+    exports2.classMethodOrDeclareMethodCommon = classMethodOrDeclareMethodCommon;
     defineType("ClassMethod", {
       aliases: ["Function", "Scopable", "BlockParent", "FunctionParent", "Method"],
       builder: ["kind", "key", "params", "body", "computed", "static", "generator", "async"],
@@ -6793,15 +10486,15 @@ var require_jsx = __commonJS({
 
 // node_modules/@babel/types/lib/definitions/placeholders.js
 var require_placeholders = __commonJS({
-  "node_modules/@babel/types/lib/definitions/placeholders.js"(exports) {
+  "node_modules/@babel/types/lib/definitions/placeholders.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.PLACEHOLDERS_FLIPPED_ALIAS = exports.PLACEHOLDERS_ALIAS = exports.PLACEHOLDERS = void 0;
+    exports2.PLACEHOLDERS_FLIPPED_ALIAS = exports2.PLACEHOLDERS_ALIAS = exports2.PLACEHOLDERS = void 0;
     var _utils = require_utils();
-    var PLACEHOLDERS = exports.PLACEHOLDERS = ["Identifier", "StringLiteral", "Expression", "Statement", "Declaration", "BlockStatement", "ClassBody", "Pattern"];
-    var PLACEHOLDERS_ALIAS = exports.PLACEHOLDERS_ALIAS = {
+    var PLACEHOLDERS = exports2.PLACEHOLDERS = ["Identifier", "StringLiteral", "Expression", "Statement", "Declaration", "BlockStatement", "ClassBody", "Pattern"];
+    var PLACEHOLDERS_ALIAS = exports2.PLACEHOLDERS_ALIAS = {
       Declaration: ["Statement"],
       Pattern: ["PatternLike", "LVal"]
     };
@@ -6810,7 +10503,7 @@ var require_placeholders = __commonJS({
       if (alias != null && alias.length)
         PLACEHOLDERS_ALIAS[type] = alias;
     }
-    var PLACEHOLDERS_FLIPPED_ALIAS = exports.PLACEHOLDERS_FLIPPED_ALIAS = {};
+    var PLACEHOLDERS_FLIPPED_ALIAS = exports2.PLACEHOLDERS_FLIPPED_ALIAS = {};
     Object.keys(PLACEHOLDERS_ALIAS).forEach((type) => {
       PLACEHOLDERS_ALIAS[type].forEach((alias) => {
         if (!hasOwnProperty.call(PLACEHOLDERS_FLIPPED_ALIAS, alias)) {
@@ -7516,13 +11209,13 @@ Expected ${val.length + 1} quasis but got ${node.quasis.length}`);
 
 // node_modules/@babel/types/lib/definitions/deprecated-aliases.js
 var require_deprecated_aliases = __commonJS({
-  "node_modules/@babel/types/lib/definitions/deprecated-aliases.js"(exports) {
+  "node_modules/@babel/types/lib/definitions/deprecated-aliases.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.DEPRECATED_ALIASES = void 0;
-    var DEPRECATED_ALIASES = exports.DEPRECATED_ALIASES = {
+    exports2.DEPRECATED_ALIASES = void 0;
+    var DEPRECATED_ALIASES = exports2.DEPRECATED_ALIASES = {
       ModuleDeclaration: "ImportOrExportDeclaration"
     };
   }
@@ -7530,73 +11223,73 @@ var require_deprecated_aliases = __commonJS({
 
 // node_modules/@babel/types/lib/definitions/index.js
 var require_definitions = __commonJS({
-  "node_modules/@babel/types/lib/definitions/index.js"(exports) {
+  "node_modules/@babel/types/lib/definitions/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "ALIAS_KEYS", {
+    Object.defineProperty(exports2, "ALIAS_KEYS", {
       enumerable: true,
       get: function() {
         return _utils.ALIAS_KEYS;
       }
     });
-    Object.defineProperty(exports, "BUILDER_KEYS", {
+    Object.defineProperty(exports2, "BUILDER_KEYS", {
       enumerable: true,
       get: function() {
         return _utils.BUILDER_KEYS;
       }
     });
-    Object.defineProperty(exports, "DEPRECATED_ALIASES", {
+    Object.defineProperty(exports2, "DEPRECATED_ALIASES", {
       enumerable: true,
       get: function() {
         return _deprecatedAliases.DEPRECATED_ALIASES;
       }
     });
-    Object.defineProperty(exports, "DEPRECATED_KEYS", {
+    Object.defineProperty(exports2, "DEPRECATED_KEYS", {
       enumerable: true,
       get: function() {
         return _utils.DEPRECATED_KEYS;
       }
     });
-    Object.defineProperty(exports, "FLIPPED_ALIAS_KEYS", {
+    Object.defineProperty(exports2, "FLIPPED_ALIAS_KEYS", {
       enumerable: true,
       get: function() {
         return _utils.FLIPPED_ALIAS_KEYS;
       }
     });
-    Object.defineProperty(exports, "NODE_FIELDS", {
+    Object.defineProperty(exports2, "NODE_FIELDS", {
       enumerable: true,
       get: function() {
         return _utils.NODE_FIELDS;
       }
     });
-    Object.defineProperty(exports, "NODE_PARENT_VALIDATIONS", {
+    Object.defineProperty(exports2, "NODE_PARENT_VALIDATIONS", {
       enumerable: true,
       get: function() {
         return _utils.NODE_PARENT_VALIDATIONS;
       }
     });
-    Object.defineProperty(exports, "PLACEHOLDERS", {
+    Object.defineProperty(exports2, "PLACEHOLDERS", {
       enumerable: true,
       get: function() {
         return _placeholders.PLACEHOLDERS;
       }
     });
-    Object.defineProperty(exports, "PLACEHOLDERS_ALIAS", {
+    Object.defineProperty(exports2, "PLACEHOLDERS_ALIAS", {
       enumerable: true,
       get: function() {
         return _placeholders.PLACEHOLDERS_ALIAS;
       }
     });
-    Object.defineProperty(exports, "PLACEHOLDERS_FLIPPED_ALIAS", {
+    Object.defineProperty(exports2, "PLACEHOLDERS_FLIPPED_ALIAS", {
       enumerable: true,
       get: function() {
         return _placeholders.PLACEHOLDERS_FLIPPED_ALIAS;
       }
     });
-    exports.TYPES = void 0;
-    Object.defineProperty(exports, "VISITOR_KEYS", {
+    exports2.TYPES = void 0;
+    Object.defineProperty(exports2, "VISITOR_KEYS", {
       enumerable: true,
       get: function() {
         return _utils.VISITOR_KEYS;
@@ -7627,21 +11320,21 @@ var require_definitions = __commonJS({
         }
       }
     }
-    var TYPES = exports.TYPES = [].concat(Object.keys(_utils.VISITOR_KEYS), Object.keys(_utils.FLIPPED_ALIAS_KEYS), Object.keys(_utils.DEPRECATED_KEYS));
+    var TYPES = exports2.TYPES = [].concat(Object.keys(_utils.VISITOR_KEYS), Object.keys(_utils.FLIPPED_ALIAS_KEYS), Object.keys(_utils.DEPRECATED_KEYS));
   }
 });
 
 // node_modules/@babel/types/lib/validators/validate.js
 var require_validate = __commonJS({
-  "node_modules/@babel/types/lib/validators/validate.js"(exports) {
+  "node_modules/@babel/types/lib/validators/validate.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = validate;
-    exports.validateChild = validateChild;
-    exports.validateField = validateField;
-    exports.validateInternal = validateInternal;
+    exports2.default = validate;
+    exports2.validateChild = validateChild;
+    exports2.validateField = validateField;
+    exports2.validateInternal = validateInternal;
     var _index = require_definitions();
     function validate(node, key, val) {
       if (!node)
@@ -7686,267 +11379,267 @@ var require_validate = __commonJS({
 
 // node_modules/@babel/types/lib/builders/generated/lowercase.js
 var require_lowercase = __commonJS({
-  "node_modules/@babel/types/lib/builders/generated/lowercase.js"(exports) {
+  "node_modules/@babel/types/lib/builders/generated/lowercase.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.anyTypeAnnotation = anyTypeAnnotation;
-    exports.argumentPlaceholder = argumentPlaceholder;
-    exports.arrayExpression = arrayExpression;
-    exports.arrayPattern = arrayPattern;
-    exports.arrayTypeAnnotation = arrayTypeAnnotation;
-    exports.arrowFunctionExpression = arrowFunctionExpression;
-    exports.assignmentExpression = assignmentExpression;
-    exports.assignmentPattern = assignmentPattern;
-    exports.awaitExpression = awaitExpression;
-    exports.bigIntLiteral = bigIntLiteral;
-    exports.binaryExpression = binaryExpression;
-    exports.bindExpression = bindExpression;
-    exports.blockStatement = blockStatement;
-    exports.booleanLiteral = booleanLiteral;
-    exports.booleanLiteralTypeAnnotation = booleanLiteralTypeAnnotation;
-    exports.booleanTypeAnnotation = booleanTypeAnnotation;
-    exports.breakStatement = breakStatement;
-    exports.callExpression = callExpression;
-    exports.catchClause = catchClause;
-    exports.classAccessorProperty = classAccessorProperty;
-    exports.classBody = classBody;
-    exports.classDeclaration = classDeclaration;
-    exports.classExpression = classExpression;
-    exports.classImplements = classImplements;
-    exports.classMethod = classMethod;
-    exports.classPrivateMethod = classPrivateMethod;
-    exports.classPrivateProperty = classPrivateProperty;
-    exports.classProperty = classProperty;
-    exports.conditionalExpression = conditionalExpression;
-    exports.continueStatement = continueStatement;
-    exports.debuggerStatement = debuggerStatement;
-    exports.decimalLiteral = decimalLiteral;
-    exports.declareClass = declareClass;
-    exports.declareExportAllDeclaration = declareExportAllDeclaration;
-    exports.declareExportDeclaration = declareExportDeclaration;
-    exports.declareFunction = declareFunction;
-    exports.declareInterface = declareInterface;
-    exports.declareModule = declareModule;
-    exports.declareModuleExports = declareModuleExports;
-    exports.declareOpaqueType = declareOpaqueType;
-    exports.declareTypeAlias = declareTypeAlias;
-    exports.declareVariable = declareVariable;
-    exports.declaredPredicate = declaredPredicate;
-    exports.decorator = decorator;
-    exports.directive = directive;
-    exports.directiveLiteral = directiveLiteral;
-    exports.doExpression = doExpression;
-    exports.doWhileStatement = doWhileStatement;
-    exports.emptyStatement = emptyStatement;
-    exports.emptyTypeAnnotation = emptyTypeAnnotation;
-    exports.enumBooleanBody = enumBooleanBody;
-    exports.enumBooleanMember = enumBooleanMember;
-    exports.enumDeclaration = enumDeclaration;
-    exports.enumDefaultedMember = enumDefaultedMember;
-    exports.enumNumberBody = enumNumberBody;
-    exports.enumNumberMember = enumNumberMember;
-    exports.enumStringBody = enumStringBody;
-    exports.enumStringMember = enumStringMember;
-    exports.enumSymbolBody = enumSymbolBody;
-    exports.existsTypeAnnotation = existsTypeAnnotation;
-    exports.exportAllDeclaration = exportAllDeclaration;
-    exports.exportDefaultDeclaration = exportDefaultDeclaration;
-    exports.exportDefaultSpecifier = exportDefaultSpecifier;
-    exports.exportNamedDeclaration = exportNamedDeclaration;
-    exports.exportNamespaceSpecifier = exportNamespaceSpecifier;
-    exports.exportSpecifier = exportSpecifier;
-    exports.expressionStatement = expressionStatement;
-    exports.file = file2;
-    exports.forInStatement = forInStatement;
-    exports.forOfStatement = forOfStatement;
-    exports.forStatement = forStatement;
-    exports.functionDeclaration = functionDeclaration;
-    exports.functionExpression = functionExpression;
-    exports.functionTypeAnnotation = functionTypeAnnotation;
-    exports.functionTypeParam = functionTypeParam;
-    exports.genericTypeAnnotation = genericTypeAnnotation;
-    exports.identifier = identifier;
-    exports.ifStatement = ifStatement;
-    exports.import = _import;
-    exports.importAttribute = importAttribute;
-    exports.importDeclaration = importDeclaration;
-    exports.importDefaultSpecifier = importDefaultSpecifier;
-    exports.importExpression = importExpression;
-    exports.importNamespaceSpecifier = importNamespaceSpecifier;
-    exports.importSpecifier = importSpecifier;
-    exports.indexedAccessType = indexedAccessType;
-    exports.inferredPredicate = inferredPredicate;
-    exports.interfaceDeclaration = interfaceDeclaration;
-    exports.interfaceExtends = interfaceExtends;
-    exports.interfaceTypeAnnotation = interfaceTypeAnnotation;
-    exports.interpreterDirective = interpreterDirective;
-    exports.intersectionTypeAnnotation = intersectionTypeAnnotation;
-    exports.jSXAttribute = exports.jsxAttribute = jsxAttribute;
-    exports.jSXClosingElement = exports.jsxClosingElement = jsxClosingElement;
-    exports.jSXClosingFragment = exports.jsxClosingFragment = jsxClosingFragment;
-    exports.jSXElement = exports.jsxElement = jsxElement;
-    exports.jSXEmptyExpression = exports.jsxEmptyExpression = jsxEmptyExpression;
-    exports.jSXExpressionContainer = exports.jsxExpressionContainer = jsxExpressionContainer;
-    exports.jSXFragment = exports.jsxFragment = jsxFragment;
-    exports.jSXIdentifier = exports.jsxIdentifier = jsxIdentifier;
-    exports.jSXMemberExpression = exports.jsxMemberExpression = jsxMemberExpression;
-    exports.jSXNamespacedName = exports.jsxNamespacedName = jsxNamespacedName;
-    exports.jSXOpeningElement = exports.jsxOpeningElement = jsxOpeningElement;
-    exports.jSXOpeningFragment = exports.jsxOpeningFragment = jsxOpeningFragment;
-    exports.jSXSpreadAttribute = exports.jsxSpreadAttribute = jsxSpreadAttribute;
-    exports.jSXSpreadChild = exports.jsxSpreadChild = jsxSpreadChild;
-    exports.jSXText = exports.jsxText = jsxText;
-    exports.labeledStatement = labeledStatement;
-    exports.logicalExpression = logicalExpression;
-    exports.memberExpression = memberExpression;
-    exports.metaProperty = metaProperty;
-    exports.mixedTypeAnnotation = mixedTypeAnnotation;
-    exports.moduleExpression = moduleExpression;
-    exports.newExpression = newExpression;
-    exports.noop = noop;
-    exports.nullLiteral = nullLiteral;
-    exports.nullLiteralTypeAnnotation = nullLiteralTypeAnnotation;
-    exports.nullableTypeAnnotation = nullableTypeAnnotation;
-    exports.numberLiteral = NumberLiteral;
-    exports.numberLiteralTypeAnnotation = numberLiteralTypeAnnotation;
-    exports.numberTypeAnnotation = numberTypeAnnotation;
-    exports.numericLiteral = numericLiteral;
-    exports.objectExpression = objectExpression;
-    exports.objectMethod = objectMethod;
-    exports.objectPattern = objectPattern;
-    exports.objectProperty = objectProperty;
-    exports.objectTypeAnnotation = objectTypeAnnotation;
-    exports.objectTypeCallProperty = objectTypeCallProperty;
-    exports.objectTypeIndexer = objectTypeIndexer;
-    exports.objectTypeInternalSlot = objectTypeInternalSlot;
-    exports.objectTypeProperty = objectTypeProperty;
-    exports.objectTypeSpreadProperty = objectTypeSpreadProperty;
-    exports.opaqueType = opaqueType;
-    exports.optionalCallExpression = optionalCallExpression;
-    exports.optionalIndexedAccessType = optionalIndexedAccessType;
-    exports.optionalMemberExpression = optionalMemberExpression;
-    exports.parenthesizedExpression = parenthesizedExpression;
-    exports.pipelineBareFunction = pipelineBareFunction;
-    exports.pipelinePrimaryTopicReference = pipelinePrimaryTopicReference;
-    exports.pipelineTopicExpression = pipelineTopicExpression;
-    exports.placeholder = placeholder;
-    exports.privateName = privateName;
-    exports.program = program;
-    exports.qualifiedTypeIdentifier = qualifiedTypeIdentifier;
-    exports.recordExpression = recordExpression;
-    exports.regExpLiteral = regExpLiteral;
-    exports.regexLiteral = RegexLiteral;
-    exports.restElement = restElement;
-    exports.restProperty = RestProperty;
-    exports.returnStatement = returnStatement;
-    exports.sequenceExpression = sequenceExpression;
-    exports.spreadElement = spreadElement;
-    exports.spreadProperty = SpreadProperty;
-    exports.staticBlock = staticBlock;
-    exports.stringLiteral = stringLiteral;
-    exports.stringLiteralTypeAnnotation = stringLiteralTypeAnnotation;
-    exports.stringTypeAnnotation = stringTypeAnnotation;
-    exports.super = _super;
-    exports.switchCase = switchCase;
-    exports.switchStatement = switchStatement;
-    exports.symbolTypeAnnotation = symbolTypeAnnotation;
-    exports.taggedTemplateExpression = taggedTemplateExpression;
-    exports.templateElement = templateElement;
-    exports.templateLiteral = templateLiteral2;
-    exports.thisExpression = thisExpression;
-    exports.thisTypeAnnotation = thisTypeAnnotation;
-    exports.throwStatement = throwStatement;
-    exports.topicReference = topicReference;
-    exports.tryStatement = tryStatement;
-    exports.tSAnyKeyword = exports.tsAnyKeyword = tsAnyKeyword;
-    exports.tSArrayType = exports.tsArrayType = tsArrayType;
-    exports.tSAsExpression = exports.tsAsExpression = tsAsExpression;
-    exports.tSBigIntKeyword = exports.tsBigIntKeyword = tsBigIntKeyword;
-    exports.tSBooleanKeyword = exports.tsBooleanKeyword = tsBooleanKeyword;
-    exports.tSCallSignatureDeclaration = exports.tsCallSignatureDeclaration = tsCallSignatureDeclaration;
-    exports.tSConditionalType = exports.tsConditionalType = tsConditionalType;
-    exports.tSConstructSignatureDeclaration = exports.tsConstructSignatureDeclaration = tsConstructSignatureDeclaration;
-    exports.tSConstructorType = exports.tsConstructorType = tsConstructorType;
-    exports.tSDeclareFunction = exports.tsDeclareFunction = tsDeclareFunction;
-    exports.tSDeclareMethod = exports.tsDeclareMethod = tsDeclareMethod;
-    exports.tSEnumBody = exports.tsEnumBody = tsEnumBody;
-    exports.tSEnumDeclaration = exports.tsEnumDeclaration = tsEnumDeclaration;
-    exports.tSEnumMember = exports.tsEnumMember = tsEnumMember;
-    exports.tSExportAssignment = exports.tsExportAssignment = tsExportAssignment;
-    exports.tSExpressionWithTypeArguments = exports.tsExpressionWithTypeArguments = tsExpressionWithTypeArguments;
-    exports.tSExternalModuleReference = exports.tsExternalModuleReference = tsExternalModuleReference;
-    exports.tSFunctionType = exports.tsFunctionType = tsFunctionType;
-    exports.tSImportEqualsDeclaration = exports.tsImportEqualsDeclaration = tsImportEqualsDeclaration;
-    exports.tSImportType = exports.tsImportType = tsImportType;
-    exports.tSIndexSignature = exports.tsIndexSignature = tsIndexSignature;
-    exports.tSIndexedAccessType = exports.tsIndexedAccessType = tsIndexedAccessType;
-    exports.tSInferType = exports.tsInferType = tsInferType;
-    exports.tSInstantiationExpression = exports.tsInstantiationExpression = tsInstantiationExpression;
-    exports.tSInterfaceBody = exports.tsInterfaceBody = tsInterfaceBody;
-    exports.tSInterfaceDeclaration = exports.tsInterfaceDeclaration = tsInterfaceDeclaration;
-    exports.tSIntersectionType = exports.tsIntersectionType = tsIntersectionType;
-    exports.tSIntrinsicKeyword = exports.tsIntrinsicKeyword = tsIntrinsicKeyword;
-    exports.tSLiteralType = exports.tsLiteralType = tsLiteralType;
-    exports.tSMappedType = exports.tsMappedType = tsMappedType;
-    exports.tSMethodSignature = exports.tsMethodSignature = tsMethodSignature;
-    exports.tSModuleBlock = exports.tsModuleBlock = tsModuleBlock;
-    exports.tSModuleDeclaration = exports.tsModuleDeclaration = tsModuleDeclaration;
-    exports.tSNamedTupleMember = exports.tsNamedTupleMember = tsNamedTupleMember;
-    exports.tSNamespaceExportDeclaration = exports.tsNamespaceExportDeclaration = tsNamespaceExportDeclaration;
-    exports.tSNeverKeyword = exports.tsNeverKeyword = tsNeverKeyword;
-    exports.tSNonNullExpression = exports.tsNonNullExpression = tsNonNullExpression;
-    exports.tSNullKeyword = exports.tsNullKeyword = tsNullKeyword;
-    exports.tSNumberKeyword = exports.tsNumberKeyword = tsNumberKeyword;
-    exports.tSObjectKeyword = exports.tsObjectKeyword = tsObjectKeyword;
-    exports.tSOptionalType = exports.tsOptionalType = tsOptionalType;
-    exports.tSParameterProperty = exports.tsParameterProperty = tsParameterProperty;
-    exports.tSParenthesizedType = exports.tsParenthesizedType = tsParenthesizedType;
-    exports.tSPropertySignature = exports.tsPropertySignature = tsPropertySignature;
-    exports.tSQualifiedName = exports.tsQualifiedName = tsQualifiedName;
-    exports.tSRestType = exports.tsRestType = tsRestType;
-    exports.tSSatisfiesExpression = exports.tsSatisfiesExpression = tsSatisfiesExpression;
-    exports.tSStringKeyword = exports.tsStringKeyword = tsStringKeyword;
-    exports.tSSymbolKeyword = exports.tsSymbolKeyword = tsSymbolKeyword;
-    exports.tSTemplateLiteralType = exports.tsTemplateLiteralType = tsTemplateLiteralType;
-    exports.tSThisType = exports.tsThisType = tsThisType;
-    exports.tSTupleType = exports.tsTupleType = tsTupleType;
-    exports.tSTypeAliasDeclaration = exports.tsTypeAliasDeclaration = tsTypeAliasDeclaration;
-    exports.tSTypeAnnotation = exports.tsTypeAnnotation = tsTypeAnnotation;
-    exports.tSTypeAssertion = exports.tsTypeAssertion = tsTypeAssertion;
-    exports.tSTypeLiteral = exports.tsTypeLiteral = tsTypeLiteral;
-    exports.tSTypeOperator = exports.tsTypeOperator = tsTypeOperator;
-    exports.tSTypeParameter = exports.tsTypeParameter = tsTypeParameter;
-    exports.tSTypeParameterDeclaration = exports.tsTypeParameterDeclaration = tsTypeParameterDeclaration;
-    exports.tSTypeParameterInstantiation = exports.tsTypeParameterInstantiation = tsTypeParameterInstantiation;
-    exports.tSTypePredicate = exports.tsTypePredicate = tsTypePredicate;
-    exports.tSTypeQuery = exports.tsTypeQuery = tsTypeQuery;
-    exports.tSTypeReference = exports.tsTypeReference = tsTypeReference;
-    exports.tSUndefinedKeyword = exports.tsUndefinedKeyword = tsUndefinedKeyword;
-    exports.tSUnionType = exports.tsUnionType = tsUnionType;
-    exports.tSUnknownKeyword = exports.tsUnknownKeyword = tsUnknownKeyword;
-    exports.tSVoidKeyword = exports.tsVoidKeyword = tsVoidKeyword;
-    exports.tupleExpression = tupleExpression;
-    exports.tupleTypeAnnotation = tupleTypeAnnotation;
-    exports.typeAlias = typeAlias;
-    exports.typeAnnotation = typeAnnotation;
-    exports.typeCastExpression = typeCastExpression;
-    exports.typeParameter = typeParameter;
-    exports.typeParameterDeclaration = typeParameterDeclaration;
-    exports.typeParameterInstantiation = typeParameterInstantiation;
-    exports.typeofTypeAnnotation = typeofTypeAnnotation;
-    exports.unaryExpression = unaryExpression;
-    exports.unionTypeAnnotation = unionTypeAnnotation;
-    exports.updateExpression = updateExpression;
-    exports.v8IntrinsicIdentifier = v8IntrinsicIdentifier;
-    exports.variableDeclaration = variableDeclaration;
-    exports.variableDeclarator = variableDeclarator;
-    exports.variance = variance;
-    exports.voidTypeAnnotation = voidTypeAnnotation;
-    exports.whileStatement = whileStatement;
-    exports.withStatement = withStatement;
-    exports.yieldExpression = yieldExpression;
+    exports2.anyTypeAnnotation = anyTypeAnnotation;
+    exports2.argumentPlaceholder = argumentPlaceholder;
+    exports2.arrayExpression = arrayExpression;
+    exports2.arrayPattern = arrayPattern;
+    exports2.arrayTypeAnnotation = arrayTypeAnnotation;
+    exports2.arrowFunctionExpression = arrowFunctionExpression;
+    exports2.assignmentExpression = assignmentExpression;
+    exports2.assignmentPattern = assignmentPattern;
+    exports2.awaitExpression = awaitExpression;
+    exports2.bigIntLiteral = bigIntLiteral;
+    exports2.binaryExpression = binaryExpression;
+    exports2.bindExpression = bindExpression;
+    exports2.blockStatement = blockStatement;
+    exports2.booleanLiteral = booleanLiteral;
+    exports2.booleanLiteralTypeAnnotation = booleanLiteralTypeAnnotation;
+    exports2.booleanTypeAnnotation = booleanTypeAnnotation;
+    exports2.breakStatement = breakStatement;
+    exports2.callExpression = callExpression;
+    exports2.catchClause = catchClause;
+    exports2.classAccessorProperty = classAccessorProperty;
+    exports2.classBody = classBody;
+    exports2.classDeclaration = classDeclaration;
+    exports2.classExpression = classExpression;
+    exports2.classImplements = classImplements;
+    exports2.classMethod = classMethod;
+    exports2.classPrivateMethod = classPrivateMethod;
+    exports2.classPrivateProperty = classPrivateProperty;
+    exports2.classProperty = classProperty;
+    exports2.conditionalExpression = conditionalExpression;
+    exports2.continueStatement = continueStatement;
+    exports2.debuggerStatement = debuggerStatement;
+    exports2.decimalLiteral = decimalLiteral;
+    exports2.declareClass = declareClass;
+    exports2.declareExportAllDeclaration = declareExportAllDeclaration;
+    exports2.declareExportDeclaration = declareExportDeclaration;
+    exports2.declareFunction = declareFunction;
+    exports2.declareInterface = declareInterface;
+    exports2.declareModule = declareModule;
+    exports2.declareModuleExports = declareModuleExports;
+    exports2.declareOpaqueType = declareOpaqueType;
+    exports2.declareTypeAlias = declareTypeAlias;
+    exports2.declareVariable = declareVariable;
+    exports2.declaredPredicate = declaredPredicate;
+    exports2.decorator = decorator;
+    exports2.directive = directive;
+    exports2.directiveLiteral = directiveLiteral;
+    exports2.doExpression = doExpression;
+    exports2.doWhileStatement = doWhileStatement;
+    exports2.emptyStatement = emptyStatement;
+    exports2.emptyTypeAnnotation = emptyTypeAnnotation;
+    exports2.enumBooleanBody = enumBooleanBody;
+    exports2.enumBooleanMember = enumBooleanMember;
+    exports2.enumDeclaration = enumDeclaration;
+    exports2.enumDefaultedMember = enumDefaultedMember;
+    exports2.enumNumberBody = enumNumberBody;
+    exports2.enumNumberMember = enumNumberMember;
+    exports2.enumStringBody = enumStringBody;
+    exports2.enumStringMember = enumStringMember;
+    exports2.enumSymbolBody = enumSymbolBody;
+    exports2.existsTypeAnnotation = existsTypeAnnotation;
+    exports2.exportAllDeclaration = exportAllDeclaration;
+    exports2.exportDefaultDeclaration = exportDefaultDeclaration;
+    exports2.exportDefaultSpecifier = exportDefaultSpecifier;
+    exports2.exportNamedDeclaration = exportNamedDeclaration;
+    exports2.exportNamespaceSpecifier = exportNamespaceSpecifier;
+    exports2.exportSpecifier = exportSpecifier;
+    exports2.expressionStatement = expressionStatement;
+    exports2.file = file2;
+    exports2.forInStatement = forInStatement;
+    exports2.forOfStatement = forOfStatement;
+    exports2.forStatement = forStatement;
+    exports2.functionDeclaration = functionDeclaration;
+    exports2.functionExpression = functionExpression;
+    exports2.functionTypeAnnotation = functionTypeAnnotation;
+    exports2.functionTypeParam = functionTypeParam;
+    exports2.genericTypeAnnotation = genericTypeAnnotation;
+    exports2.identifier = identifier;
+    exports2.ifStatement = ifStatement;
+    exports2.import = _import;
+    exports2.importAttribute = importAttribute;
+    exports2.importDeclaration = importDeclaration;
+    exports2.importDefaultSpecifier = importDefaultSpecifier;
+    exports2.importExpression = importExpression;
+    exports2.importNamespaceSpecifier = importNamespaceSpecifier;
+    exports2.importSpecifier = importSpecifier;
+    exports2.indexedAccessType = indexedAccessType;
+    exports2.inferredPredicate = inferredPredicate;
+    exports2.interfaceDeclaration = interfaceDeclaration;
+    exports2.interfaceExtends = interfaceExtends;
+    exports2.interfaceTypeAnnotation = interfaceTypeAnnotation;
+    exports2.interpreterDirective = interpreterDirective;
+    exports2.intersectionTypeAnnotation = intersectionTypeAnnotation;
+    exports2.jSXAttribute = exports2.jsxAttribute = jsxAttribute;
+    exports2.jSXClosingElement = exports2.jsxClosingElement = jsxClosingElement;
+    exports2.jSXClosingFragment = exports2.jsxClosingFragment = jsxClosingFragment;
+    exports2.jSXElement = exports2.jsxElement = jsxElement;
+    exports2.jSXEmptyExpression = exports2.jsxEmptyExpression = jsxEmptyExpression;
+    exports2.jSXExpressionContainer = exports2.jsxExpressionContainer = jsxExpressionContainer;
+    exports2.jSXFragment = exports2.jsxFragment = jsxFragment;
+    exports2.jSXIdentifier = exports2.jsxIdentifier = jsxIdentifier;
+    exports2.jSXMemberExpression = exports2.jsxMemberExpression = jsxMemberExpression;
+    exports2.jSXNamespacedName = exports2.jsxNamespacedName = jsxNamespacedName;
+    exports2.jSXOpeningElement = exports2.jsxOpeningElement = jsxOpeningElement;
+    exports2.jSXOpeningFragment = exports2.jsxOpeningFragment = jsxOpeningFragment;
+    exports2.jSXSpreadAttribute = exports2.jsxSpreadAttribute = jsxSpreadAttribute;
+    exports2.jSXSpreadChild = exports2.jsxSpreadChild = jsxSpreadChild;
+    exports2.jSXText = exports2.jsxText = jsxText;
+    exports2.labeledStatement = labeledStatement;
+    exports2.logicalExpression = logicalExpression;
+    exports2.memberExpression = memberExpression;
+    exports2.metaProperty = metaProperty;
+    exports2.mixedTypeAnnotation = mixedTypeAnnotation;
+    exports2.moduleExpression = moduleExpression;
+    exports2.newExpression = newExpression;
+    exports2.noop = noop;
+    exports2.nullLiteral = nullLiteral;
+    exports2.nullLiteralTypeAnnotation = nullLiteralTypeAnnotation;
+    exports2.nullableTypeAnnotation = nullableTypeAnnotation;
+    exports2.numberLiteral = NumberLiteral;
+    exports2.numberLiteralTypeAnnotation = numberLiteralTypeAnnotation;
+    exports2.numberTypeAnnotation = numberTypeAnnotation;
+    exports2.numericLiteral = numericLiteral;
+    exports2.objectExpression = objectExpression;
+    exports2.objectMethod = objectMethod;
+    exports2.objectPattern = objectPattern;
+    exports2.objectProperty = objectProperty;
+    exports2.objectTypeAnnotation = objectTypeAnnotation;
+    exports2.objectTypeCallProperty = objectTypeCallProperty;
+    exports2.objectTypeIndexer = objectTypeIndexer;
+    exports2.objectTypeInternalSlot = objectTypeInternalSlot;
+    exports2.objectTypeProperty = objectTypeProperty;
+    exports2.objectTypeSpreadProperty = objectTypeSpreadProperty;
+    exports2.opaqueType = opaqueType;
+    exports2.optionalCallExpression = optionalCallExpression;
+    exports2.optionalIndexedAccessType = optionalIndexedAccessType;
+    exports2.optionalMemberExpression = optionalMemberExpression;
+    exports2.parenthesizedExpression = parenthesizedExpression;
+    exports2.pipelineBareFunction = pipelineBareFunction;
+    exports2.pipelinePrimaryTopicReference = pipelinePrimaryTopicReference;
+    exports2.pipelineTopicExpression = pipelineTopicExpression;
+    exports2.placeholder = placeholder;
+    exports2.privateName = privateName;
+    exports2.program = program;
+    exports2.qualifiedTypeIdentifier = qualifiedTypeIdentifier;
+    exports2.recordExpression = recordExpression;
+    exports2.regExpLiteral = regExpLiteral;
+    exports2.regexLiteral = RegexLiteral;
+    exports2.restElement = restElement;
+    exports2.restProperty = RestProperty;
+    exports2.returnStatement = returnStatement;
+    exports2.sequenceExpression = sequenceExpression;
+    exports2.spreadElement = spreadElement;
+    exports2.spreadProperty = SpreadProperty;
+    exports2.staticBlock = staticBlock;
+    exports2.stringLiteral = stringLiteral;
+    exports2.stringLiteralTypeAnnotation = stringLiteralTypeAnnotation;
+    exports2.stringTypeAnnotation = stringTypeAnnotation;
+    exports2.super = _super;
+    exports2.switchCase = switchCase;
+    exports2.switchStatement = switchStatement;
+    exports2.symbolTypeAnnotation = symbolTypeAnnotation;
+    exports2.taggedTemplateExpression = taggedTemplateExpression;
+    exports2.templateElement = templateElement;
+    exports2.templateLiteral = templateLiteral2;
+    exports2.thisExpression = thisExpression;
+    exports2.thisTypeAnnotation = thisTypeAnnotation;
+    exports2.throwStatement = throwStatement;
+    exports2.topicReference = topicReference;
+    exports2.tryStatement = tryStatement;
+    exports2.tSAnyKeyword = exports2.tsAnyKeyword = tsAnyKeyword;
+    exports2.tSArrayType = exports2.tsArrayType = tsArrayType;
+    exports2.tSAsExpression = exports2.tsAsExpression = tsAsExpression;
+    exports2.tSBigIntKeyword = exports2.tsBigIntKeyword = tsBigIntKeyword;
+    exports2.tSBooleanKeyword = exports2.tsBooleanKeyword = tsBooleanKeyword;
+    exports2.tSCallSignatureDeclaration = exports2.tsCallSignatureDeclaration = tsCallSignatureDeclaration;
+    exports2.tSConditionalType = exports2.tsConditionalType = tsConditionalType;
+    exports2.tSConstructSignatureDeclaration = exports2.tsConstructSignatureDeclaration = tsConstructSignatureDeclaration;
+    exports2.tSConstructorType = exports2.tsConstructorType = tsConstructorType;
+    exports2.tSDeclareFunction = exports2.tsDeclareFunction = tsDeclareFunction;
+    exports2.tSDeclareMethod = exports2.tsDeclareMethod = tsDeclareMethod;
+    exports2.tSEnumBody = exports2.tsEnumBody = tsEnumBody;
+    exports2.tSEnumDeclaration = exports2.tsEnumDeclaration = tsEnumDeclaration;
+    exports2.tSEnumMember = exports2.tsEnumMember = tsEnumMember;
+    exports2.tSExportAssignment = exports2.tsExportAssignment = tsExportAssignment;
+    exports2.tSExpressionWithTypeArguments = exports2.tsExpressionWithTypeArguments = tsExpressionWithTypeArguments;
+    exports2.tSExternalModuleReference = exports2.tsExternalModuleReference = tsExternalModuleReference;
+    exports2.tSFunctionType = exports2.tsFunctionType = tsFunctionType;
+    exports2.tSImportEqualsDeclaration = exports2.tsImportEqualsDeclaration = tsImportEqualsDeclaration;
+    exports2.tSImportType = exports2.tsImportType = tsImportType;
+    exports2.tSIndexSignature = exports2.tsIndexSignature = tsIndexSignature;
+    exports2.tSIndexedAccessType = exports2.tsIndexedAccessType = tsIndexedAccessType;
+    exports2.tSInferType = exports2.tsInferType = tsInferType;
+    exports2.tSInstantiationExpression = exports2.tsInstantiationExpression = tsInstantiationExpression;
+    exports2.tSInterfaceBody = exports2.tsInterfaceBody = tsInterfaceBody;
+    exports2.tSInterfaceDeclaration = exports2.tsInterfaceDeclaration = tsInterfaceDeclaration;
+    exports2.tSIntersectionType = exports2.tsIntersectionType = tsIntersectionType;
+    exports2.tSIntrinsicKeyword = exports2.tsIntrinsicKeyword = tsIntrinsicKeyword;
+    exports2.tSLiteralType = exports2.tsLiteralType = tsLiteralType;
+    exports2.tSMappedType = exports2.tsMappedType = tsMappedType;
+    exports2.tSMethodSignature = exports2.tsMethodSignature = tsMethodSignature;
+    exports2.tSModuleBlock = exports2.tsModuleBlock = tsModuleBlock;
+    exports2.tSModuleDeclaration = exports2.tsModuleDeclaration = tsModuleDeclaration;
+    exports2.tSNamedTupleMember = exports2.tsNamedTupleMember = tsNamedTupleMember;
+    exports2.tSNamespaceExportDeclaration = exports2.tsNamespaceExportDeclaration = tsNamespaceExportDeclaration;
+    exports2.tSNeverKeyword = exports2.tsNeverKeyword = tsNeverKeyword;
+    exports2.tSNonNullExpression = exports2.tsNonNullExpression = tsNonNullExpression;
+    exports2.tSNullKeyword = exports2.tsNullKeyword = tsNullKeyword;
+    exports2.tSNumberKeyword = exports2.tsNumberKeyword = tsNumberKeyword;
+    exports2.tSObjectKeyword = exports2.tsObjectKeyword = tsObjectKeyword;
+    exports2.tSOptionalType = exports2.tsOptionalType = tsOptionalType;
+    exports2.tSParameterProperty = exports2.tsParameterProperty = tsParameterProperty;
+    exports2.tSParenthesizedType = exports2.tsParenthesizedType = tsParenthesizedType;
+    exports2.tSPropertySignature = exports2.tsPropertySignature = tsPropertySignature;
+    exports2.tSQualifiedName = exports2.tsQualifiedName = tsQualifiedName;
+    exports2.tSRestType = exports2.tsRestType = tsRestType;
+    exports2.tSSatisfiesExpression = exports2.tsSatisfiesExpression = tsSatisfiesExpression;
+    exports2.tSStringKeyword = exports2.tsStringKeyword = tsStringKeyword;
+    exports2.tSSymbolKeyword = exports2.tsSymbolKeyword = tsSymbolKeyword;
+    exports2.tSTemplateLiteralType = exports2.tsTemplateLiteralType = tsTemplateLiteralType;
+    exports2.tSThisType = exports2.tsThisType = tsThisType;
+    exports2.tSTupleType = exports2.tsTupleType = tsTupleType;
+    exports2.tSTypeAliasDeclaration = exports2.tsTypeAliasDeclaration = tsTypeAliasDeclaration;
+    exports2.tSTypeAnnotation = exports2.tsTypeAnnotation = tsTypeAnnotation;
+    exports2.tSTypeAssertion = exports2.tsTypeAssertion = tsTypeAssertion;
+    exports2.tSTypeLiteral = exports2.tsTypeLiteral = tsTypeLiteral;
+    exports2.tSTypeOperator = exports2.tsTypeOperator = tsTypeOperator;
+    exports2.tSTypeParameter = exports2.tsTypeParameter = tsTypeParameter;
+    exports2.tSTypeParameterDeclaration = exports2.tsTypeParameterDeclaration = tsTypeParameterDeclaration;
+    exports2.tSTypeParameterInstantiation = exports2.tsTypeParameterInstantiation = tsTypeParameterInstantiation;
+    exports2.tSTypePredicate = exports2.tsTypePredicate = tsTypePredicate;
+    exports2.tSTypeQuery = exports2.tsTypeQuery = tsTypeQuery;
+    exports2.tSTypeReference = exports2.tsTypeReference = tsTypeReference;
+    exports2.tSUndefinedKeyword = exports2.tsUndefinedKeyword = tsUndefinedKeyword;
+    exports2.tSUnionType = exports2.tsUnionType = tsUnionType;
+    exports2.tSUnknownKeyword = exports2.tsUnknownKeyword = tsUnknownKeyword;
+    exports2.tSVoidKeyword = exports2.tsVoidKeyword = tsVoidKeyword;
+    exports2.tupleExpression = tupleExpression;
+    exports2.tupleTypeAnnotation = tupleTypeAnnotation;
+    exports2.typeAlias = typeAlias;
+    exports2.typeAnnotation = typeAnnotation;
+    exports2.typeCastExpression = typeCastExpression;
+    exports2.typeParameter = typeParameter;
+    exports2.typeParameterDeclaration = typeParameterDeclaration;
+    exports2.typeParameterInstantiation = typeParameterInstantiation;
+    exports2.typeofTypeAnnotation = typeofTypeAnnotation;
+    exports2.unaryExpression = unaryExpression;
+    exports2.unionTypeAnnotation = unionTypeAnnotation;
+    exports2.updateExpression = updateExpression;
+    exports2.v8IntrinsicIdentifier = v8IntrinsicIdentifier;
+    exports2.variableDeclaration = variableDeclaration;
+    exports2.variableDeclarator = variableDeclarator;
+    exports2.variance = variance;
+    exports2.voidTypeAnnotation = voidTypeAnnotation;
+    exports2.whileStatement = whileStatement;
+    exports2.withStatement = withStatement;
+    exports2.yieldExpression = yieldExpression;
     var _validate = require_validate();
     var _deprecationWarning = require_deprecationWarning();
     var utils = require_utils();
@@ -10575,14 +14268,14 @@ var require_lowercase = __commonJS({
 
 // node_modules/@babel/types/lib/builders/generated/uppercase.js
 var require_uppercase = __commonJS({
-  "node_modules/@babel/types/lib/builders/generated/uppercase.js"(exports) {
+  "node_modules/@babel/types/lib/builders/generated/uppercase.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.JSXIdentifier = exports.JSXFragment = exports.JSXExpressionContainer = exports.JSXEmptyExpression = exports.JSXElement = exports.JSXClosingFragment = exports.JSXClosingElement = exports.JSXAttribute = exports.IntersectionTypeAnnotation = exports.InterpreterDirective = exports.InterfaceTypeAnnotation = exports.InterfaceExtends = exports.InterfaceDeclaration = exports.InferredPredicate = exports.IndexedAccessType = exports.ImportSpecifier = exports.ImportNamespaceSpecifier = exports.ImportExpression = exports.ImportDefaultSpecifier = exports.ImportDeclaration = exports.ImportAttribute = exports.Import = exports.IfStatement = exports.Identifier = exports.GenericTypeAnnotation = exports.FunctionTypeParam = exports.FunctionTypeAnnotation = exports.FunctionExpression = exports.FunctionDeclaration = exports.ForStatement = exports.ForOfStatement = exports.ForInStatement = exports.File = exports.ExpressionStatement = exports.ExportSpecifier = exports.ExportNamespaceSpecifier = exports.ExportNamedDeclaration = exports.ExportDefaultSpecifier = exports.ExportDefaultDeclaration = exports.ExportAllDeclaration = exports.ExistsTypeAnnotation = exports.EnumSymbolBody = exports.EnumStringMember = exports.EnumStringBody = exports.EnumNumberMember = exports.EnumNumberBody = exports.EnumDefaultedMember = exports.EnumDeclaration = exports.EnumBooleanMember = exports.EnumBooleanBody = exports.EmptyTypeAnnotation = exports.EmptyStatement = exports.DoWhileStatement = exports.DoExpression = exports.DirectiveLiteral = exports.Directive = exports.Decorator = exports.DeclaredPredicate = exports.DeclareVariable = exports.DeclareTypeAlias = exports.DeclareOpaqueType = exports.DeclareModuleExports = exports.DeclareModule = exports.DeclareInterface = exports.DeclareFunction = exports.DeclareExportDeclaration = exports.DeclareExportAllDeclaration = exports.DeclareClass = exports.DecimalLiteral = exports.DebuggerStatement = exports.ContinueStatement = exports.ConditionalExpression = exports.ClassProperty = exports.ClassPrivateProperty = exports.ClassPrivateMethod = exports.ClassMethod = exports.ClassImplements = exports.ClassExpression = exports.ClassDeclaration = exports.ClassBody = exports.ClassAccessorProperty = exports.CatchClause = exports.CallExpression = exports.BreakStatement = exports.BooleanTypeAnnotation = exports.BooleanLiteralTypeAnnotation = exports.BooleanLiteral = exports.BlockStatement = exports.BindExpression = exports.BinaryExpression = exports.BigIntLiteral = exports.AwaitExpression = exports.AssignmentPattern = exports.AssignmentExpression = exports.ArrowFunctionExpression = exports.ArrayTypeAnnotation = exports.ArrayPattern = exports.ArrayExpression = exports.ArgumentPlaceholder = exports.AnyTypeAnnotation = void 0;
-    exports.TSNumberKeyword = exports.TSNullKeyword = exports.TSNonNullExpression = exports.TSNeverKeyword = exports.TSNamespaceExportDeclaration = exports.TSNamedTupleMember = exports.TSModuleDeclaration = exports.TSModuleBlock = exports.TSMethodSignature = exports.TSMappedType = exports.TSLiteralType = exports.TSIntrinsicKeyword = exports.TSIntersectionType = exports.TSInterfaceDeclaration = exports.TSInterfaceBody = exports.TSInstantiationExpression = exports.TSInferType = exports.TSIndexedAccessType = exports.TSIndexSignature = exports.TSImportType = exports.TSImportEqualsDeclaration = exports.TSFunctionType = exports.TSExternalModuleReference = exports.TSExpressionWithTypeArguments = exports.TSExportAssignment = exports.TSEnumMember = exports.TSEnumDeclaration = exports.TSEnumBody = exports.TSDeclareMethod = exports.TSDeclareFunction = exports.TSConstructorType = exports.TSConstructSignatureDeclaration = exports.TSConditionalType = exports.TSCallSignatureDeclaration = exports.TSBooleanKeyword = exports.TSBigIntKeyword = exports.TSAsExpression = exports.TSArrayType = exports.TSAnyKeyword = exports.SymbolTypeAnnotation = exports.SwitchStatement = exports.SwitchCase = exports.Super = exports.StringTypeAnnotation = exports.StringLiteralTypeAnnotation = exports.StringLiteral = exports.StaticBlock = exports.SpreadProperty = exports.SpreadElement = exports.SequenceExpression = exports.ReturnStatement = exports.RestProperty = exports.RestElement = exports.RegexLiteral = exports.RegExpLiteral = exports.RecordExpression = exports.QualifiedTypeIdentifier = exports.Program = exports.PrivateName = exports.Placeholder = exports.PipelineTopicExpression = exports.PipelinePrimaryTopicReference = exports.PipelineBareFunction = exports.ParenthesizedExpression = exports.OptionalMemberExpression = exports.OptionalIndexedAccessType = exports.OptionalCallExpression = exports.OpaqueType = exports.ObjectTypeSpreadProperty = exports.ObjectTypeProperty = exports.ObjectTypeInternalSlot = exports.ObjectTypeIndexer = exports.ObjectTypeCallProperty = exports.ObjectTypeAnnotation = exports.ObjectProperty = exports.ObjectPattern = exports.ObjectMethod = exports.ObjectExpression = exports.NumericLiteral = exports.NumberTypeAnnotation = exports.NumberLiteralTypeAnnotation = exports.NumberLiteral = exports.NullableTypeAnnotation = exports.NullLiteralTypeAnnotation = exports.NullLiteral = exports.Noop = exports.NewExpression = exports.ModuleExpression = exports.MixedTypeAnnotation = exports.MetaProperty = exports.MemberExpression = exports.LogicalExpression = exports.LabeledStatement = exports.JSXText = exports.JSXSpreadChild = exports.JSXSpreadAttribute = exports.JSXOpeningFragment = exports.JSXOpeningElement = exports.JSXNamespacedName = exports.JSXMemberExpression = void 0;
-    exports.YieldExpression = exports.WithStatement = exports.WhileStatement = exports.VoidTypeAnnotation = exports.Variance = exports.VariableDeclarator = exports.VariableDeclaration = exports.V8IntrinsicIdentifier = exports.UpdateExpression = exports.UnionTypeAnnotation = exports.UnaryExpression = exports.TypeofTypeAnnotation = exports.TypeParameterInstantiation = exports.TypeParameterDeclaration = exports.TypeParameter = exports.TypeCastExpression = exports.TypeAnnotation = exports.TypeAlias = exports.TupleTypeAnnotation = exports.TupleExpression = exports.TryStatement = exports.TopicReference = exports.ThrowStatement = exports.ThisTypeAnnotation = exports.ThisExpression = exports.TemplateLiteral = exports.TemplateElement = exports.TaggedTemplateExpression = exports.TSVoidKeyword = exports.TSUnknownKeyword = exports.TSUnionType = exports.TSUndefinedKeyword = exports.TSTypeReference = exports.TSTypeQuery = exports.TSTypePredicate = exports.TSTypeParameterInstantiation = exports.TSTypeParameterDeclaration = exports.TSTypeParameter = exports.TSTypeOperator = exports.TSTypeLiteral = exports.TSTypeAssertion = exports.TSTypeAnnotation = exports.TSTypeAliasDeclaration = exports.TSTupleType = exports.TSThisType = exports.TSTemplateLiteralType = exports.TSSymbolKeyword = exports.TSStringKeyword = exports.TSSatisfiesExpression = exports.TSRestType = exports.TSQualifiedName = exports.TSPropertySignature = exports.TSParenthesizedType = exports.TSParameterProperty = exports.TSOptionalType = exports.TSObjectKeyword = void 0;
+    exports2.JSXIdentifier = exports2.JSXFragment = exports2.JSXExpressionContainer = exports2.JSXEmptyExpression = exports2.JSXElement = exports2.JSXClosingFragment = exports2.JSXClosingElement = exports2.JSXAttribute = exports2.IntersectionTypeAnnotation = exports2.InterpreterDirective = exports2.InterfaceTypeAnnotation = exports2.InterfaceExtends = exports2.InterfaceDeclaration = exports2.InferredPredicate = exports2.IndexedAccessType = exports2.ImportSpecifier = exports2.ImportNamespaceSpecifier = exports2.ImportExpression = exports2.ImportDefaultSpecifier = exports2.ImportDeclaration = exports2.ImportAttribute = exports2.Import = exports2.IfStatement = exports2.Identifier = exports2.GenericTypeAnnotation = exports2.FunctionTypeParam = exports2.FunctionTypeAnnotation = exports2.FunctionExpression = exports2.FunctionDeclaration = exports2.ForStatement = exports2.ForOfStatement = exports2.ForInStatement = exports2.File = exports2.ExpressionStatement = exports2.ExportSpecifier = exports2.ExportNamespaceSpecifier = exports2.ExportNamedDeclaration = exports2.ExportDefaultSpecifier = exports2.ExportDefaultDeclaration = exports2.ExportAllDeclaration = exports2.ExistsTypeAnnotation = exports2.EnumSymbolBody = exports2.EnumStringMember = exports2.EnumStringBody = exports2.EnumNumberMember = exports2.EnumNumberBody = exports2.EnumDefaultedMember = exports2.EnumDeclaration = exports2.EnumBooleanMember = exports2.EnumBooleanBody = exports2.EmptyTypeAnnotation = exports2.EmptyStatement = exports2.DoWhileStatement = exports2.DoExpression = exports2.DirectiveLiteral = exports2.Directive = exports2.Decorator = exports2.DeclaredPredicate = exports2.DeclareVariable = exports2.DeclareTypeAlias = exports2.DeclareOpaqueType = exports2.DeclareModuleExports = exports2.DeclareModule = exports2.DeclareInterface = exports2.DeclareFunction = exports2.DeclareExportDeclaration = exports2.DeclareExportAllDeclaration = exports2.DeclareClass = exports2.DecimalLiteral = exports2.DebuggerStatement = exports2.ContinueStatement = exports2.ConditionalExpression = exports2.ClassProperty = exports2.ClassPrivateProperty = exports2.ClassPrivateMethod = exports2.ClassMethod = exports2.ClassImplements = exports2.ClassExpression = exports2.ClassDeclaration = exports2.ClassBody = exports2.ClassAccessorProperty = exports2.CatchClause = exports2.CallExpression = exports2.BreakStatement = exports2.BooleanTypeAnnotation = exports2.BooleanLiteralTypeAnnotation = exports2.BooleanLiteral = exports2.BlockStatement = exports2.BindExpression = exports2.BinaryExpression = exports2.BigIntLiteral = exports2.AwaitExpression = exports2.AssignmentPattern = exports2.AssignmentExpression = exports2.ArrowFunctionExpression = exports2.ArrayTypeAnnotation = exports2.ArrayPattern = exports2.ArrayExpression = exports2.ArgumentPlaceholder = exports2.AnyTypeAnnotation = void 0;
+    exports2.TSNumberKeyword = exports2.TSNullKeyword = exports2.TSNonNullExpression = exports2.TSNeverKeyword = exports2.TSNamespaceExportDeclaration = exports2.TSNamedTupleMember = exports2.TSModuleDeclaration = exports2.TSModuleBlock = exports2.TSMethodSignature = exports2.TSMappedType = exports2.TSLiteralType = exports2.TSIntrinsicKeyword = exports2.TSIntersectionType = exports2.TSInterfaceDeclaration = exports2.TSInterfaceBody = exports2.TSInstantiationExpression = exports2.TSInferType = exports2.TSIndexedAccessType = exports2.TSIndexSignature = exports2.TSImportType = exports2.TSImportEqualsDeclaration = exports2.TSFunctionType = exports2.TSExternalModuleReference = exports2.TSExpressionWithTypeArguments = exports2.TSExportAssignment = exports2.TSEnumMember = exports2.TSEnumDeclaration = exports2.TSEnumBody = exports2.TSDeclareMethod = exports2.TSDeclareFunction = exports2.TSConstructorType = exports2.TSConstructSignatureDeclaration = exports2.TSConditionalType = exports2.TSCallSignatureDeclaration = exports2.TSBooleanKeyword = exports2.TSBigIntKeyword = exports2.TSAsExpression = exports2.TSArrayType = exports2.TSAnyKeyword = exports2.SymbolTypeAnnotation = exports2.SwitchStatement = exports2.SwitchCase = exports2.Super = exports2.StringTypeAnnotation = exports2.StringLiteralTypeAnnotation = exports2.StringLiteral = exports2.StaticBlock = exports2.SpreadProperty = exports2.SpreadElement = exports2.SequenceExpression = exports2.ReturnStatement = exports2.RestProperty = exports2.RestElement = exports2.RegexLiteral = exports2.RegExpLiteral = exports2.RecordExpression = exports2.QualifiedTypeIdentifier = exports2.Program = exports2.PrivateName = exports2.Placeholder = exports2.PipelineTopicExpression = exports2.PipelinePrimaryTopicReference = exports2.PipelineBareFunction = exports2.ParenthesizedExpression = exports2.OptionalMemberExpression = exports2.OptionalIndexedAccessType = exports2.OptionalCallExpression = exports2.OpaqueType = exports2.ObjectTypeSpreadProperty = exports2.ObjectTypeProperty = exports2.ObjectTypeInternalSlot = exports2.ObjectTypeIndexer = exports2.ObjectTypeCallProperty = exports2.ObjectTypeAnnotation = exports2.ObjectProperty = exports2.ObjectPattern = exports2.ObjectMethod = exports2.ObjectExpression = exports2.NumericLiteral = exports2.NumberTypeAnnotation = exports2.NumberLiteralTypeAnnotation = exports2.NumberLiteral = exports2.NullableTypeAnnotation = exports2.NullLiteralTypeAnnotation = exports2.NullLiteral = exports2.Noop = exports2.NewExpression = exports2.ModuleExpression = exports2.MixedTypeAnnotation = exports2.MetaProperty = exports2.MemberExpression = exports2.LogicalExpression = exports2.LabeledStatement = exports2.JSXText = exports2.JSXSpreadChild = exports2.JSXSpreadAttribute = exports2.JSXOpeningFragment = exports2.JSXOpeningElement = exports2.JSXNamespacedName = exports2.JSXMemberExpression = void 0;
+    exports2.YieldExpression = exports2.WithStatement = exports2.WhileStatement = exports2.VoidTypeAnnotation = exports2.Variance = exports2.VariableDeclarator = exports2.VariableDeclaration = exports2.V8IntrinsicIdentifier = exports2.UpdateExpression = exports2.UnionTypeAnnotation = exports2.UnaryExpression = exports2.TypeofTypeAnnotation = exports2.TypeParameterInstantiation = exports2.TypeParameterDeclaration = exports2.TypeParameter = exports2.TypeCastExpression = exports2.TypeAnnotation = exports2.TypeAlias = exports2.TupleTypeAnnotation = exports2.TupleExpression = exports2.TryStatement = exports2.TopicReference = exports2.ThrowStatement = exports2.ThisTypeAnnotation = exports2.ThisExpression = exports2.TemplateLiteral = exports2.TemplateElement = exports2.TaggedTemplateExpression = exports2.TSVoidKeyword = exports2.TSUnknownKeyword = exports2.TSUnionType = exports2.TSUndefinedKeyword = exports2.TSTypeReference = exports2.TSTypeQuery = exports2.TSTypePredicate = exports2.TSTypeParameterInstantiation = exports2.TSTypeParameterDeclaration = exports2.TSTypeParameter = exports2.TSTypeOperator = exports2.TSTypeLiteral = exports2.TSTypeAssertion = exports2.TSTypeAnnotation = exports2.TSTypeAliasDeclaration = exports2.TSTupleType = exports2.TSThisType = exports2.TSTemplateLiteralType = exports2.TSSymbolKeyword = exports2.TSStringKeyword = exports2.TSSatisfiesExpression = exports2.TSRestType = exports2.TSQualifiedName = exports2.TSPropertySignature = exports2.TSParenthesizedType = exports2.TSParameterProperty = exports2.TSOptionalType = exports2.TSObjectKeyword = void 0;
     var b = require_lowercase();
     var _deprecationWarning = require_deprecationWarning();
     function alias(lowercase2) {
@@ -10590,279 +14283,279 @@ var require_uppercase = __commonJS({
         return b[lowercase2];
       }
     }
-    var ArrayExpression = exports.ArrayExpression = alias("arrayExpression");
-    var AssignmentExpression = exports.AssignmentExpression = alias("assignmentExpression");
-    var BinaryExpression = exports.BinaryExpression = alias("binaryExpression");
-    var InterpreterDirective = exports.InterpreterDirective = alias("interpreterDirective");
-    var Directive = exports.Directive = alias("directive");
-    var DirectiveLiteral = exports.DirectiveLiteral = alias("directiveLiteral");
-    var BlockStatement = exports.BlockStatement = alias("blockStatement");
-    var BreakStatement = exports.BreakStatement = alias("breakStatement");
-    var CallExpression = exports.CallExpression = alias("callExpression");
-    var CatchClause = exports.CatchClause = alias("catchClause");
-    var ConditionalExpression = exports.ConditionalExpression = alias("conditionalExpression");
-    var ContinueStatement = exports.ContinueStatement = alias("continueStatement");
-    var DebuggerStatement = exports.DebuggerStatement = alias("debuggerStatement");
-    var DoWhileStatement = exports.DoWhileStatement = alias("doWhileStatement");
-    var EmptyStatement = exports.EmptyStatement = alias("emptyStatement");
-    var ExpressionStatement = exports.ExpressionStatement = alias("expressionStatement");
-    var File2 = exports.File = alias("file");
-    var ForInStatement = exports.ForInStatement = alias("forInStatement");
-    var ForStatement = exports.ForStatement = alias("forStatement");
-    var FunctionDeclaration = exports.FunctionDeclaration = alias("functionDeclaration");
-    var FunctionExpression = exports.FunctionExpression = alias("functionExpression");
-    var Identifier = exports.Identifier = alias("identifier");
-    var IfStatement = exports.IfStatement = alias("ifStatement");
-    var LabeledStatement = exports.LabeledStatement = alias("labeledStatement");
-    var StringLiteral = exports.StringLiteral = alias("stringLiteral");
-    var NumericLiteral = exports.NumericLiteral = alias("numericLiteral");
-    var NullLiteral = exports.NullLiteral = alias("nullLiteral");
-    var BooleanLiteral = exports.BooleanLiteral = alias("booleanLiteral");
-    var RegExpLiteral = exports.RegExpLiteral = alias("regExpLiteral");
-    var LogicalExpression = exports.LogicalExpression = alias("logicalExpression");
-    var MemberExpression = exports.MemberExpression = alias("memberExpression");
-    var NewExpression = exports.NewExpression = alias("newExpression");
-    var Program = exports.Program = alias("program");
-    var ObjectExpression = exports.ObjectExpression = alias("objectExpression");
-    var ObjectMethod = exports.ObjectMethod = alias("objectMethod");
-    var ObjectProperty = exports.ObjectProperty = alias("objectProperty");
-    var RestElement = exports.RestElement = alias("restElement");
-    var ReturnStatement = exports.ReturnStatement = alias("returnStatement");
-    var SequenceExpression = exports.SequenceExpression = alias("sequenceExpression");
-    var ParenthesizedExpression = exports.ParenthesizedExpression = alias("parenthesizedExpression");
-    var SwitchCase = exports.SwitchCase = alias("switchCase");
-    var SwitchStatement = exports.SwitchStatement = alias("switchStatement");
-    var ThisExpression = exports.ThisExpression = alias("thisExpression");
-    var ThrowStatement = exports.ThrowStatement = alias("throwStatement");
-    var TryStatement = exports.TryStatement = alias("tryStatement");
-    var UnaryExpression = exports.UnaryExpression = alias("unaryExpression");
-    var UpdateExpression = exports.UpdateExpression = alias("updateExpression");
-    var VariableDeclaration = exports.VariableDeclaration = alias("variableDeclaration");
-    var VariableDeclarator = exports.VariableDeclarator = alias("variableDeclarator");
-    var WhileStatement = exports.WhileStatement = alias("whileStatement");
-    var WithStatement = exports.WithStatement = alias("withStatement");
-    var AssignmentPattern = exports.AssignmentPattern = alias("assignmentPattern");
-    var ArrayPattern = exports.ArrayPattern = alias("arrayPattern");
-    var ArrowFunctionExpression = exports.ArrowFunctionExpression = alias("arrowFunctionExpression");
-    var ClassBody = exports.ClassBody = alias("classBody");
-    var ClassExpression = exports.ClassExpression = alias("classExpression");
-    var ClassDeclaration = exports.ClassDeclaration = alias("classDeclaration");
-    var ExportAllDeclaration = exports.ExportAllDeclaration = alias("exportAllDeclaration");
-    var ExportDefaultDeclaration = exports.ExportDefaultDeclaration = alias("exportDefaultDeclaration");
-    var ExportNamedDeclaration = exports.ExportNamedDeclaration = alias("exportNamedDeclaration");
-    var ExportSpecifier = exports.ExportSpecifier = alias("exportSpecifier");
-    var ForOfStatement = exports.ForOfStatement = alias("forOfStatement");
-    var ImportDeclaration = exports.ImportDeclaration = alias("importDeclaration");
-    var ImportDefaultSpecifier = exports.ImportDefaultSpecifier = alias("importDefaultSpecifier");
-    var ImportNamespaceSpecifier = exports.ImportNamespaceSpecifier = alias("importNamespaceSpecifier");
-    var ImportSpecifier = exports.ImportSpecifier = alias("importSpecifier");
-    var ImportExpression = exports.ImportExpression = alias("importExpression");
-    var MetaProperty = exports.MetaProperty = alias("metaProperty");
-    var ClassMethod = exports.ClassMethod = alias("classMethod");
-    var ObjectPattern = exports.ObjectPattern = alias("objectPattern");
-    var SpreadElement = exports.SpreadElement = alias("spreadElement");
-    var Super = exports.Super = alias("super");
-    var TaggedTemplateExpression = exports.TaggedTemplateExpression = alias("taggedTemplateExpression");
-    var TemplateElement = exports.TemplateElement = alias("templateElement");
-    var TemplateLiteral = exports.TemplateLiteral = alias("templateLiteral");
-    var YieldExpression = exports.YieldExpression = alias("yieldExpression");
-    var AwaitExpression = exports.AwaitExpression = alias("awaitExpression");
-    var Import = exports.Import = alias("import");
-    var BigIntLiteral = exports.BigIntLiteral = alias("bigIntLiteral");
-    var ExportNamespaceSpecifier = exports.ExportNamespaceSpecifier = alias("exportNamespaceSpecifier");
-    var OptionalMemberExpression = exports.OptionalMemberExpression = alias("optionalMemberExpression");
-    var OptionalCallExpression = exports.OptionalCallExpression = alias("optionalCallExpression");
-    var ClassProperty = exports.ClassProperty = alias("classProperty");
-    var ClassAccessorProperty = exports.ClassAccessorProperty = alias("classAccessorProperty");
-    var ClassPrivateProperty = exports.ClassPrivateProperty = alias("classPrivateProperty");
-    var ClassPrivateMethod = exports.ClassPrivateMethod = alias("classPrivateMethod");
-    var PrivateName = exports.PrivateName = alias("privateName");
-    var StaticBlock = exports.StaticBlock = alias("staticBlock");
-    var ImportAttribute = exports.ImportAttribute = alias("importAttribute");
-    var AnyTypeAnnotation = exports.AnyTypeAnnotation = alias("anyTypeAnnotation");
-    var ArrayTypeAnnotation = exports.ArrayTypeAnnotation = alias("arrayTypeAnnotation");
-    var BooleanTypeAnnotation = exports.BooleanTypeAnnotation = alias("booleanTypeAnnotation");
-    var BooleanLiteralTypeAnnotation = exports.BooleanLiteralTypeAnnotation = alias("booleanLiteralTypeAnnotation");
-    var NullLiteralTypeAnnotation = exports.NullLiteralTypeAnnotation = alias("nullLiteralTypeAnnotation");
-    var ClassImplements = exports.ClassImplements = alias("classImplements");
-    var DeclareClass = exports.DeclareClass = alias("declareClass");
-    var DeclareFunction = exports.DeclareFunction = alias("declareFunction");
-    var DeclareInterface = exports.DeclareInterface = alias("declareInterface");
-    var DeclareModule = exports.DeclareModule = alias("declareModule");
-    var DeclareModuleExports = exports.DeclareModuleExports = alias("declareModuleExports");
-    var DeclareTypeAlias = exports.DeclareTypeAlias = alias("declareTypeAlias");
-    var DeclareOpaqueType = exports.DeclareOpaqueType = alias("declareOpaqueType");
-    var DeclareVariable = exports.DeclareVariable = alias("declareVariable");
-    var DeclareExportDeclaration = exports.DeclareExportDeclaration = alias("declareExportDeclaration");
-    var DeclareExportAllDeclaration = exports.DeclareExportAllDeclaration = alias("declareExportAllDeclaration");
-    var DeclaredPredicate = exports.DeclaredPredicate = alias("declaredPredicate");
-    var ExistsTypeAnnotation = exports.ExistsTypeAnnotation = alias("existsTypeAnnotation");
-    var FunctionTypeAnnotation = exports.FunctionTypeAnnotation = alias("functionTypeAnnotation");
-    var FunctionTypeParam = exports.FunctionTypeParam = alias("functionTypeParam");
-    var GenericTypeAnnotation = exports.GenericTypeAnnotation = alias("genericTypeAnnotation");
-    var InferredPredicate = exports.InferredPredicate = alias("inferredPredicate");
-    var InterfaceExtends = exports.InterfaceExtends = alias("interfaceExtends");
-    var InterfaceDeclaration = exports.InterfaceDeclaration = alias("interfaceDeclaration");
-    var InterfaceTypeAnnotation = exports.InterfaceTypeAnnotation = alias("interfaceTypeAnnotation");
-    var IntersectionTypeAnnotation = exports.IntersectionTypeAnnotation = alias("intersectionTypeAnnotation");
-    var MixedTypeAnnotation = exports.MixedTypeAnnotation = alias("mixedTypeAnnotation");
-    var EmptyTypeAnnotation = exports.EmptyTypeAnnotation = alias("emptyTypeAnnotation");
-    var NullableTypeAnnotation = exports.NullableTypeAnnotation = alias("nullableTypeAnnotation");
-    var NumberLiteralTypeAnnotation = exports.NumberLiteralTypeAnnotation = alias("numberLiteralTypeAnnotation");
-    var NumberTypeAnnotation = exports.NumberTypeAnnotation = alias("numberTypeAnnotation");
-    var ObjectTypeAnnotation = exports.ObjectTypeAnnotation = alias("objectTypeAnnotation");
-    var ObjectTypeInternalSlot = exports.ObjectTypeInternalSlot = alias("objectTypeInternalSlot");
-    var ObjectTypeCallProperty = exports.ObjectTypeCallProperty = alias("objectTypeCallProperty");
-    var ObjectTypeIndexer = exports.ObjectTypeIndexer = alias("objectTypeIndexer");
-    var ObjectTypeProperty = exports.ObjectTypeProperty = alias("objectTypeProperty");
-    var ObjectTypeSpreadProperty = exports.ObjectTypeSpreadProperty = alias("objectTypeSpreadProperty");
-    var OpaqueType = exports.OpaqueType = alias("opaqueType");
-    var QualifiedTypeIdentifier = exports.QualifiedTypeIdentifier = alias("qualifiedTypeIdentifier");
-    var StringLiteralTypeAnnotation = exports.StringLiteralTypeAnnotation = alias("stringLiteralTypeAnnotation");
-    var StringTypeAnnotation = exports.StringTypeAnnotation = alias("stringTypeAnnotation");
-    var SymbolTypeAnnotation = exports.SymbolTypeAnnotation = alias("symbolTypeAnnotation");
-    var ThisTypeAnnotation = exports.ThisTypeAnnotation = alias("thisTypeAnnotation");
-    var TupleTypeAnnotation = exports.TupleTypeAnnotation = alias("tupleTypeAnnotation");
-    var TypeofTypeAnnotation = exports.TypeofTypeAnnotation = alias("typeofTypeAnnotation");
-    var TypeAlias = exports.TypeAlias = alias("typeAlias");
-    var TypeAnnotation = exports.TypeAnnotation = alias("typeAnnotation");
-    var TypeCastExpression = exports.TypeCastExpression = alias("typeCastExpression");
-    var TypeParameter = exports.TypeParameter = alias("typeParameter");
-    var TypeParameterDeclaration = exports.TypeParameterDeclaration = alias("typeParameterDeclaration");
-    var TypeParameterInstantiation = exports.TypeParameterInstantiation = alias("typeParameterInstantiation");
-    var UnionTypeAnnotation = exports.UnionTypeAnnotation = alias("unionTypeAnnotation");
-    var Variance = exports.Variance = alias("variance");
-    var VoidTypeAnnotation = exports.VoidTypeAnnotation = alias("voidTypeAnnotation");
-    var EnumDeclaration = exports.EnumDeclaration = alias("enumDeclaration");
-    var EnumBooleanBody = exports.EnumBooleanBody = alias("enumBooleanBody");
-    var EnumNumberBody = exports.EnumNumberBody = alias("enumNumberBody");
-    var EnumStringBody = exports.EnumStringBody = alias("enumStringBody");
-    var EnumSymbolBody = exports.EnumSymbolBody = alias("enumSymbolBody");
-    var EnumBooleanMember = exports.EnumBooleanMember = alias("enumBooleanMember");
-    var EnumNumberMember = exports.EnumNumberMember = alias("enumNumberMember");
-    var EnumStringMember = exports.EnumStringMember = alias("enumStringMember");
-    var EnumDefaultedMember = exports.EnumDefaultedMember = alias("enumDefaultedMember");
-    var IndexedAccessType = exports.IndexedAccessType = alias("indexedAccessType");
-    var OptionalIndexedAccessType = exports.OptionalIndexedAccessType = alias("optionalIndexedAccessType");
-    var JSXAttribute = exports.JSXAttribute = alias("jsxAttribute");
-    var JSXClosingElement = exports.JSXClosingElement = alias("jsxClosingElement");
-    var JSXElement = exports.JSXElement = alias("jsxElement");
-    var JSXEmptyExpression = exports.JSXEmptyExpression = alias("jsxEmptyExpression");
-    var JSXExpressionContainer = exports.JSXExpressionContainer = alias("jsxExpressionContainer");
-    var JSXSpreadChild = exports.JSXSpreadChild = alias("jsxSpreadChild");
-    var JSXIdentifier = exports.JSXIdentifier = alias("jsxIdentifier");
-    var JSXMemberExpression = exports.JSXMemberExpression = alias("jsxMemberExpression");
-    var JSXNamespacedName = exports.JSXNamespacedName = alias("jsxNamespacedName");
-    var JSXOpeningElement = exports.JSXOpeningElement = alias("jsxOpeningElement");
-    var JSXSpreadAttribute = exports.JSXSpreadAttribute = alias("jsxSpreadAttribute");
-    var JSXText = exports.JSXText = alias("jsxText");
-    var JSXFragment = exports.JSXFragment = alias("jsxFragment");
-    var JSXOpeningFragment = exports.JSXOpeningFragment = alias("jsxOpeningFragment");
-    var JSXClosingFragment = exports.JSXClosingFragment = alias("jsxClosingFragment");
-    var Noop = exports.Noop = alias("noop");
-    var Placeholder2 = exports.Placeholder = alias("placeholder");
-    var V8IntrinsicIdentifier = exports.V8IntrinsicIdentifier = alias("v8IntrinsicIdentifier");
-    var ArgumentPlaceholder = exports.ArgumentPlaceholder = alias("argumentPlaceholder");
-    var BindExpression = exports.BindExpression = alias("bindExpression");
-    var Decorator = exports.Decorator = alias("decorator");
-    var DoExpression = exports.DoExpression = alias("doExpression");
-    var ExportDefaultSpecifier = exports.ExportDefaultSpecifier = alias("exportDefaultSpecifier");
-    var RecordExpression = exports.RecordExpression = alias("recordExpression");
-    var TupleExpression = exports.TupleExpression = alias("tupleExpression");
-    var DecimalLiteral = exports.DecimalLiteral = alias("decimalLiteral");
-    var ModuleExpression = exports.ModuleExpression = alias("moduleExpression");
-    var TopicReference = exports.TopicReference = alias("topicReference");
-    var PipelineTopicExpression = exports.PipelineTopicExpression = alias("pipelineTopicExpression");
-    var PipelineBareFunction = exports.PipelineBareFunction = alias("pipelineBareFunction");
-    var PipelinePrimaryTopicReference = exports.PipelinePrimaryTopicReference = alias("pipelinePrimaryTopicReference");
-    var TSParameterProperty = exports.TSParameterProperty = alias("tsParameterProperty");
-    var TSDeclareFunction = exports.TSDeclareFunction = alias("tsDeclareFunction");
-    var TSDeclareMethod = exports.TSDeclareMethod = alias("tsDeclareMethod");
-    var TSQualifiedName = exports.TSQualifiedName = alias("tsQualifiedName");
-    var TSCallSignatureDeclaration = exports.TSCallSignatureDeclaration = alias("tsCallSignatureDeclaration");
-    var TSConstructSignatureDeclaration = exports.TSConstructSignatureDeclaration = alias("tsConstructSignatureDeclaration");
-    var TSPropertySignature = exports.TSPropertySignature = alias("tsPropertySignature");
-    var TSMethodSignature = exports.TSMethodSignature = alias("tsMethodSignature");
-    var TSIndexSignature = exports.TSIndexSignature = alias("tsIndexSignature");
-    var TSAnyKeyword = exports.TSAnyKeyword = alias("tsAnyKeyword");
-    var TSBooleanKeyword = exports.TSBooleanKeyword = alias("tsBooleanKeyword");
-    var TSBigIntKeyword = exports.TSBigIntKeyword = alias("tsBigIntKeyword");
-    var TSIntrinsicKeyword = exports.TSIntrinsicKeyword = alias("tsIntrinsicKeyword");
-    var TSNeverKeyword = exports.TSNeverKeyword = alias("tsNeverKeyword");
-    var TSNullKeyword = exports.TSNullKeyword = alias("tsNullKeyword");
-    var TSNumberKeyword = exports.TSNumberKeyword = alias("tsNumberKeyword");
-    var TSObjectKeyword = exports.TSObjectKeyword = alias("tsObjectKeyword");
-    var TSStringKeyword = exports.TSStringKeyword = alias("tsStringKeyword");
-    var TSSymbolKeyword = exports.TSSymbolKeyword = alias("tsSymbolKeyword");
-    var TSUndefinedKeyword = exports.TSUndefinedKeyword = alias("tsUndefinedKeyword");
-    var TSUnknownKeyword = exports.TSUnknownKeyword = alias("tsUnknownKeyword");
-    var TSVoidKeyword = exports.TSVoidKeyword = alias("tsVoidKeyword");
-    var TSThisType = exports.TSThisType = alias("tsThisType");
-    var TSFunctionType = exports.TSFunctionType = alias("tsFunctionType");
-    var TSConstructorType = exports.TSConstructorType = alias("tsConstructorType");
-    var TSTypeReference = exports.TSTypeReference = alias("tsTypeReference");
-    var TSTypePredicate = exports.TSTypePredicate = alias("tsTypePredicate");
-    var TSTypeQuery = exports.TSTypeQuery = alias("tsTypeQuery");
-    var TSTypeLiteral = exports.TSTypeLiteral = alias("tsTypeLiteral");
-    var TSArrayType = exports.TSArrayType = alias("tsArrayType");
-    var TSTupleType = exports.TSTupleType = alias("tsTupleType");
-    var TSOptionalType = exports.TSOptionalType = alias("tsOptionalType");
-    var TSRestType = exports.TSRestType = alias("tsRestType");
-    var TSNamedTupleMember = exports.TSNamedTupleMember = alias("tsNamedTupleMember");
-    var TSUnionType = exports.TSUnionType = alias("tsUnionType");
-    var TSIntersectionType = exports.TSIntersectionType = alias("tsIntersectionType");
-    var TSConditionalType = exports.TSConditionalType = alias("tsConditionalType");
-    var TSInferType = exports.TSInferType = alias("tsInferType");
-    var TSParenthesizedType = exports.TSParenthesizedType = alias("tsParenthesizedType");
-    var TSTypeOperator = exports.TSTypeOperator = alias("tsTypeOperator");
-    var TSIndexedAccessType = exports.TSIndexedAccessType = alias("tsIndexedAccessType");
-    var TSMappedType = exports.TSMappedType = alias("tsMappedType");
-    var TSTemplateLiteralType = exports.TSTemplateLiteralType = alias("tsTemplateLiteralType");
-    var TSLiteralType = exports.TSLiteralType = alias("tsLiteralType");
-    var TSExpressionWithTypeArguments = exports.TSExpressionWithTypeArguments = alias("tsExpressionWithTypeArguments");
-    var TSInterfaceDeclaration = exports.TSInterfaceDeclaration = alias("tsInterfaceDeclaration");
-    var TSInterfaceBody = exports.TSInterfaceBody = alias("tsInterfaceBody");
-    var TSTypeAliasDeclaration = exports.TSTypeAliasDeclaration = alias("tsTypeAliasDeclaration");
-    var TSInstantiationExpression = exports.TSInstantiationExpression = alias("tsInstantiationExpression");
-    var TSAsExpression = exports.TSAsExpression = alias("tsAsExpression");
-    var TSSatisfiesExpression = exports.TSSatisfiesExpression = alias("tsSatisfiesExpression");
-    var TSTypeAssertion = exports.TSTypeAssertion = alias("tsTypeAssertion");
-    var TSEnumBody = exports.TSEnumBody = alias("tsEnumBody");
-    var TSEnumDeclaration = exports.TSEnumDeclaration = alias("tsEnumDeclaration");
-    var TSEnumMember = exports.TSEnumMember = alias("tsEnumMember");
-    var TSModuleDeclaration = exports.TSModuleDeclaration = alias("tsModuleDeclaration");
-    var TSModuleBlock = exports.TSModuleBlock = alias("tsModuleBlock");
-    var TSImportType = exports.TSImportType = alias("tsImportType");
-    var TSImportEqualsDeclaration = exports.TSImportEqualsDeclaration = alias("tsImportEqualsDeclaration");
-    var TSExternalModuleReference = exports.TSExternalModuleReference = alias("tsExternalModuleReference");
-    var TSNonNullExpression = exports.TSNonNullExpression = alias("tsNonNullExpression");
-    var TSExportAssignment = exports.TSExportAssignment = alias("tsExportAssignment");
-    var TSNamespaceExportDeclaration = exports.TSNamespaceExportDeclaration = alias("tsNamespaceExportDeclaration");
-    var TSTypeAnnotation = exports.TSTypeAnnotation = alias("tsTypeAnnotation");
-    var TSTypeParameterInstantiation = exports.TSTypeParameterInstantiation = alias("tsTypeParameterInstantiation");
-    var TSTypeParameterDeclaration = exports.TSTypeParameterDeclaration = alias("tsTypeParameterDeclaration");
-    var TSTypeParameter = exports.TSTypeParameter = alias("tsTypeParameter");
-    var NumberLiteral = exports.NumberLiteral = b.numberLiteral;
-    var RegexLiteral = exports.RegexLiteral = b.regexLiteral;
-    var RestProperty = exports.RestProperty = b.restProperty;
-    var SpreadProperty = exports.SpreadProperty = b.spreadProperty;
+    var ArrayExpression = exports2.ArrayExpression = alias("arrayExpression");
+    var AssignmentExpression = exports2.AssignmentExpression = alias("assignmentExpression");
+    var BinaryExpression = exports2.BinaryExpression = alias("binaryExpression");
+    var InterpreterDirective = exports2.InterpreterDirective = alias("interpreterDirective");
+    var Directive = exports2.Directive = alias("directive");
+    var DirectiveLiteral = exports2.DirectiveLiteral = alias("directiveLiteral");
+    var BlockStatement = exports2.BlockStatement = alias("blockStatement");
+    var BreakStatement = exports2.BreakStatement = alias("breakStatement");
+    var CallExpression = exports2.CallExpression = alias("callExpression");
+    var CatchClause = exports2.CatchClause = alias("catchClause");
+    var ConditionalExpression = exports2.ConditionalExpression = alias("conditionalExpression");
+    var ContinueStatement = exports2.ContinueStatement = alias("continueStatement");
+    var DebuggerStatement = exports2.DebuggerStatement = alias("debuggerStatement");
+    var DoWhileStatement = exports2.DoWhileStatement = alias("doWhileStatement");
+    var EmptyStatement = exports2.EmptyStatement = alias("emptyStatement");
+    var ExpressionStatement = exports2.ExpressionStatement = alias("expressionStatement");
+    var File2 = exports2.File = alias("file");
+    var ForInStatement = exports2.ForInStatement = alias("forInStatement");
+    var ForStatement = exports2.ForStatement = alias("forStatement");
+    var FunctionDeclaration = exports2.FunctionDeclaration = alias("functionDeclaration");
+    var FunctionExpression = exports2.FunctionExpression = alias("functionExpression");
+    var Identifier = exports2.Identifier = alias("identifier");
+    var IfStatement = exports2.IfStatement = alias("ifStatement");
+    var LabeledStatement = exports2.LabeledStatement = alias("labeledStatement");
+    var StringLiteral = exports2.StringLiteral = alias("stringLiteral");
+    var NumericLiteral = exports2.NumericLiteral = alias("numericLiteral");
+    var NullLiteral = exports2.NullLiteral = alias("nullLiteral");
+    var BooleanLiteral = exports2.BooleanLiteral = alias("booleanLiteral");
+    var RegExpLiteral = exports2.RegExpLiteral = alias("regExpLiteral");
+    var LogicalExpression = exports2.LogicalExpression = alias("logicalExpression");
+    var MemberExpression = exports2.MemberExpression = alias("memberExpression");
+    var NewExpression = exports2.NewExpression = alias("newExpression");
+    var Program = exports2.Program = alias("program");
+    var ObjectExpression = exports2.ObjectExpression = alias("objectExpression");
+    var ObjectMethod = exports2.ObjectMethod = alias("objectMethod");
+    var ObjectProperty = exports2.ObjectProperty = alias("objectProperty");
+    var RestElement = exports2.RestElement = alias("restElement");
+    var ReturnStatement = exports2.ReturnStatement = alias("returnStatement");
+    var SequenceExpression = exports2.SequenceExpression = alias("sequenceExpression");
+    var ParenthesizedExpression = exports2.ParenthesizedExpression = alias("parenthesizedExpression");
+    var SwitchCase = exports2.SwitchCase = alias("switchCase");
+    var SwitchStatement = exports2.SwitchStatement = alias("switchStatement");
+    var ThisExpression = exports2.ThisExpression = alias("thisExpression");
+    var ThrowStatement = exports2.ThrowStatement = alias("throwStatement");
+    var TryStatement = exports2.TryStatement = alias("tryStatement");
+    var UnaryExpression = exports2.UnaryExpression = alias("unaryExpression");
+    var UpdateExpression = exports2.UpdateExpression = alias("updateExpression");
+    var VariableDeclaration = exports2.VariableDeclaration = alias("variableDeclaration");
+    var VariableDeclarator = exports2.VariableDeclarator = alias("variableDeclarator");
+    var WhileStatement = exports2.WhileStatement = alias("whileStatement");
+    var WithStatement = exports2.WithStatement = alias("withStatement");
+    var AssignmentPattern = exports2.AssignmentPattern = alias("assignmentPattern");
+    var ArrayPattern = exports2.ArrayPattern = alias("arrayPattern");
+    var ArrowFunctionExpression = exports2.ArrowFunctionExpression = alias("arrowFunctionExpression");
+    var ClassBody = exports2.ClassBody = alias("classBody");
+    var ClassExpression = exports2.ClassExpression = alias("classExpression");
+    var ClassDeclaration = exports2.ClassDeclaration = alias("classDeclaration");
+    var ExportAllDeclaration = exports2.ExportAllDeclaration = alias("exportAllDeclaration");
+    var ExportDefaultDeclaration = exports2.ExportDefaultDeclaration = alias("exportDefaultDeclaration");
+    var ExportNamedDeclaration = exports2.ExportNamedDeclaration = alias("exportNamedDeclaration");
+    var ExportSpecifier = exports2.ExportSpecifier = alias("exportSpecifier");
+    var ForOfStatement = exports2.ForOfStatement = alias("forOfStatement");
+    var ImportDeclaration = exports2.ImportDeclaration = alias("importDeclaration");
+    var ImportDefaultSpecifier = exports2.ImportDefaultSpecifier = alias("importDefaultSpecifier");
+    var ImportNamespaceSpecifier = exports2.ImportNamespaceSpecifier = alias("importNamespaceSpecifier");
+    var ImportSpecifier = exports2.ImportSpecifier = alias("importSpecifier");
+    var ImportExpression = exports2.ImportExpression = alias("importExpression");
+    var MetaProperty = exports2.MetaProperty = alias("metaProperty");
+    var ClassMethod = exports2.ClassMethod = alias("classMethod");
+    var ObjectPattern = exports2.ObjectPattern = alias("objectPattern");
+    var SpreadElement = exports2.SpreadElement = alias("spreadElement");
+    var Super = exports2.Super = alias("super");
+    var TaggedTemplateExpression = exports2.TaggedTemplateExpression = alias("taggedTemplateExpression");
+    var TemplateElement = exports2.TemplateElement = alias("templateElement");
+    var TemplateLiteral = exports2.TemplateLiteral = alias("templateLiteral");
+    var YieldExpression = exports2.YieldExpression = alias("yieldExpression");
+    var AwaitExpression = exports2.AwaitExpression = alias("awaitExpression");
+    var Import = exports2.Import = alias("import");
+    var BigIntLiteral = exports2.BigIntLiteral = alias("bigIntLiteral");
+    var ExportNamespaceSpecifier = exports2.ExportNamespaceSpecifier = alias("exportNamespaceSpecifier");
+    var OptionalMemberExpression = exports2.OptionalMemberExpression = alias("optionalMemberExpression");
+    var OptionalCallExpression = exports2.OptionalCallExpression = alias("optionalCallExpression");
+    var ClassProperty = exports2.ClassProperty = alias("classProperty");
+    var ClassAccessorProperty = exports2.ClassAccessorProperty = alias("classAccessorProperty");
+    var ClassPrivateProperty = exports2.ClassPrivateProperty = alias("classPrivateProperty");
+    var ClassPrivateMethod = exports2.ClassPrivateMethod = alias("classPrivateMethod");
+    var PrivateName = exports2.PrivateName = alias("privateName");
+    var StaticBlock = exports2.StaticBlock = alias("staticBlock");
+    var ImportAttribute = exports2.ImportAttribute = alias("importAttribute");
+    var AnyTypeAnnotation = exports2.AnyTypeAnnotation = alias("anyTypeAnnotation");
+    var ArrayTypeAnnotation = exports2.ArrayTypeAnnotation = alias("arrayTypeAnnotation");
+    var BooleanTypeAnnotation = exports2.BooleanTypeAnnotation = alias("booleanTypeAnnotation");
+    var BooleanLiteralTypeAnnotation = exports2.BooleanLiteralTypeAnnotation = alias("booleanLiteralTypeAnnotation");
+    var NullLiteralTypeAnnotation = exports2.NullLiteralTypeAnnotation = alias("nullLiteralTypeAnnotation");
+    var ClassImplements = exports2.ClassImplements = alias("classImplements");
+    var DeclareClass = exports2.DeclareClass = alias("declareClass");
+    var DeclareFunction = exports2.DeclareFunction = alias("declareFunction");
+    var DeclareInterface = exports2.DeclareInterface = alias("declareInterface");
+    var DeclareModule = exports2.DeclareModule = alias("declareModule");
+    var DeclareModuleExports = exports2.DeclareModuleExports = alias("declareModuleExports");
+    var DeclareTypeAlias = exports2.DeclareTypeAlias = alias("declareTypeAlias");
+    var DeclareOpaqueType = exports2.DeclareOpaqueType = alias("declareOpaqueType");
+    var DeclareVariable = exports2.DeclareVariable = alias("declareVariable");
+    var DeclareExportDeclaration = exports2.DeclareExportDeclaration = alias("declareExportDeclaration");
+    var DeclareExportAllDeclaration = exports2.DeclareExportAllDeclaration = alias("declareExportAllDeclaration");
+    var DeclaredPredicate = exports2.DeclaredPredicate = alias("declaredPredicate");
+    var ExistsTypeAnnotation = exports2.ExistsTypeAnnotation = alias("existsTypeAnnotation");
+    var FunctionTypeAnnotation = exports2.FunctionTypeAnnotation = alias("functionTypeAnnotation");
+    var FunctionTypeParam = exports2.FunctionTypeParam = alias("functionTypeParam");
+    var GenericTypeAnnotation = exports2.GenericTypeAnnotation = alias("genericTypeAnnotation");
+    var InferredPredicate = exports2.InferredPredicate = alias("inferredPredicate");
+    var InterfaceExtends = exports2.InterfaceExtends = alias("interfaceExtends");
+    var InterfaceDeclaration = exports2.InterfaceDeclaration = alias("interfaceDeclaration");
+    var InterfaceTypeAnnotation = exports2.InterfaceTypeAnnotation = alias("interfaceTypeAnnotation");
+    var IntersectionTypeAnnotation = exports2.IntersectionTypeAnnotation = alias("intersectionTypeAnnotation");
+    var MixedTypeAnnotation = exports2.MixedTypeAnnotation = alias("mixedTypeAnnotation");
+    var EmptyTypeAnnotation = exports2.EmptyTypeAnnotation = alias("emptyTypeAnnotation");
+    var NullableTypeAnnotation = exports2.NullableTypeAnnotation = alias("nullableTypeAnnotation");
+    var NumberLiteralTypeAnnotation = exports2.NumberLiteralTypeAnnotation = alias("numberLiteralTypeAnnotation");
+    var NumberTypeAnnotation = exports2.NumberTypeAnnotation = alias("numberTypeAnnotation");
+    var ObjectTypeAnnotation = exports2.ObjectTypeAnnotation = alias("objectTypeAnnotation");
+    var ObjectTypeInternalSlot = exports2.ObjectTypeInternalSlot = alias("objectTypeInternalSlot");
+    var ObjectTypeCallProperty = exports2.ObjectTypeCallProperty = alias("objectTypeCallProperty");
+    var ObjectTypeIndexer = exports2.ObjectTypeIndexer = alias("objectTypeIndexer");
+    var ObjectTypeProperty = exports2.ObjectTypeProperty = alias("objectTypeProperty");
+    var ObjectTypeSpreadProperty = exports2.ObjectTypeSpreadProperty = alias("objectTypeSpreadProperty");
+    var OpaqueType = exports2.OpaqueType = alias("opaqueType");
+    var QualifiedTypeIdentifier = exports2.QualifiedTypeIdentifier = alias("qualifiedTypeIdentifier");
+    var StringLiteralTypeAnnotation = exports2.StringLiteralTypeAnnotation = alias("stringLiteralTypeAnnotation");
+    var StringTypeAnnotation = exports2.StringTypeAnnotation = alias("stringTypeAnnotation");
+    var SymbolTypeAnnotation = exports2.SymbolTypeAnnotation = alias("symbolTypeAnnotation");
+    var ThisTypeAnnotation = exports2.ThisTypeAnnotation = alias("thisTypeAnnotation");
+    var TupleTypeAnnotation = exports2.TupleTypeAnnotation = alias("tupleTypeAnnotation");
+    var TypeofTypeAnnotation = exports2.TypeofTypeAnnotation = alias("typeofTypeAnnotation");
+    var TypeAlias = exports2.TypeAlias = alias("typeAlias");
+    var TypeAnnotation = exports2.TypeAnnotation = alias("typeAnnotation");
+    var TypeCastExpression = exports2.TypeCastExpression = alias("typeCastExpression");
+    var TypeParameter = exports2.TypeParameter = alias("typeParameter");
+    var TypeParameterDeclaration = exports2.TypeParameterDeclaration = alias("typeParameterDeclaration");
+    var TypeParameterInstantiation = exports2.TypeParameterInstantiation = alias("typeParameterInstantiation");
+    var UnionTypeAnnotation = exports2.UnionTypeAnnotation = alias("unionTypeAnnotation");
+    var Variance = exports2.Variance = alias("variance");
+    var VoidTypeAnnotation = exports2.VoidTypeAnnotation = alias("voidTypeAnnotation");
+    var EnumDeclaration = exports2.EnumDeclaration = alias("enumDeclaration");
+    var EnumBooleanBody = exports2.EnumBooleanBody = alias("enumBooleanBody");
+    var EnumNumberBody = exports2.EnumNumberBody = alias("enumNumberBody");
+    var EnumStringBody = exports2.EnumStringBody = alias("enumStringBody");
+    var EnumSymbolBody = exports2.EnumSymbolBody = alias("enumSymbolBody");
+    var EnumBooleanMember = exports2.EnumBooleanMember = alias("enumBooleanMember");
+    var EnumNumberMember = exports2.EnumNumberMember = alias("enumNumberMember");
+    var EnumStringMember = exports2.EnumStringMember = alias("enumStringMember");
+    var EnumDefaultedMember = exports2.EnumDefaultedMember = alias("enumDefaultedMember");
+    var IndexedAccessType = exports2.IndexedAccessType = alias("indexedAccessType");
+    var OptionalIndexedAccessType = exports2.OptionalIndexedAccessType = alias("optionalIndexedAccessType");
+    var JSXAttribute = exports2.JSXAttribute = alias("jsxAttribute");
+    var JSXClosingElement = exports2.JSXClosingElement = alias("jsxClosingElement");
+    var JSXElement = exports2.JSXElement = alias("jsxElement");
+    var JSXEmptyExpression = exports2.JSXEmptyExpression = alias("jsxEmptyExpression");
+    var JSXExpressionContainer = exports2.JSXExpressionContainer = alias("jsxExpressionContainer");
+    var JSXSpreadChild = exports2.JSXSpreadChild = alias("jsxSpreadChild");
+    var JSXIdentifier = exports2.JSXIdentifier = alias("jsxIdentifier");
+    var JSXMemberExpression = exports2.JSXMemberExpression = alias("jsxMemberExpression");
+    var JSXNamespacedName = exports2.JSXNamespacedName = alias("jsxNamespacedName");
+    var JSXOpeningElement = exports2.JSXOpeningElement = alias("jsxOpeningElement");
+    var JSXSpreadAttribute = exports2.JSXSpreadAttribute = alias("jsxSpreadAttribute");
+    var JSXText = exports2.JSXText = alias("jsxText");
+    var JSXFragment = exports2.JSXFragment = alias("jsxFragment");
+    var JSXOpeningFragment = exports2.JSXOpeningFragment = alias("jsxOpeningFragment");
+    var JSXClosingFragment = exports2.JSXClosingFragment = alias("jsxClosingFragment");
+    var Noop = exports2.Noop = alias("noop");
+    var Placeholder2 = exports2.Placeholder = alias("placeholder");
+    var V8IntrinsicIdentifier = exports2.V8IntrinsicIdentifier = alias("v8IntrinsicIdentifier");
+    var ArgumentPlaceholder = exports2.ArgumentPlaceholder = alias("argumentPlaceholder");
+    var BindExpression = exports2.BindExpression = alias("bindExpression");
+    var Decorator = exports2.Decorator = alias("decorator");
+    var DoExpression = exports2.DoExpression = alias("doExpression");
+    var ExportDefaultSpecifier = exports2.ExportDefaultSpecifier = alias("exportDefaultSpecifier");
+    var RecordExpression = exports2.RecordExpression = alias("recordExpression");
+    var TupleExpression = exports2.TupleExpression = alias("tupleExpression");
+    var DecimalLiteral = exports2.DecimalLiteral = alias("decimalLiteral");
+    var ModuleExpression = exports2.ModuleExpression = alias("moduleExpression");
+    var TopicReference = exports2.TopicReference = alias("topicReference");
+    var PipelineTopicExpression = exports2.PipelineTopicExpression = alias("pipelineTopicExpression");
+    var PipelineBareFunction = exports2.PipelineBareFunction = alias("pipelineBareFunction");
+    var PipelinePrimaryTopicReference = exports2.PipelinePrimaryTopicReference = alias("pipelinePrimaryTopicReference");
+    var TSParameterProperty = exports2.TSParameterProperty = alias("tsParameterProperty");
+    var TSDeclareFunction = exports2.TSDeclareFunction = alias("tsDeclareFunction");
+    var TSDeclareMethod = exports2.TSDeclareMethod = alias("tsDeclareMethod");
+    var TSQualifiedName = exports2.TSQualifiedName = alias("tsQualifiedName");
+    var TSCallSignatureDeclaration = exports2.TSCallSignatureDeclaration = alias("tsCallSignatureDeclaration");
+    var TSConstructSignatureDeclaration = exports2.TSConstructSignatureDeclaration = alias("tsConstructSignatureDeclaration");
+    var TSPropertySignature = exports2.TSPropertySignature = alias("tsPropertySignature");
+    var TSMethodSignature = exports2.TSMethodSignature = alias("tsMethodSignature");
+    var TSIndexSignature = exports2.TSIndexSignature = alias("tsIndexSignature");
+    var TSAnyKeyword = exports2.TSAnyKeyword = alias("tsAnyKeyword");
+    var TSBooleanKeyword = exports2.TSBooleanKeyword = alias("tsBooleanKeyword");
+    var TSBigIntKeyword = exports2.TSBigIntKeyword = alias("tsBigIntKeyword");
+    var TSIntrinsicKeyword = exports2.TSIntrinsicKeyword = alias("tsIntrinsicKeyword");
+    var TSNeverKeyword = exports2.TSNeverKeyword = alias("tsNeverKeyword");
+    var TSNullKeyword = exports2.TSNullKeyword = alias("tsNullKeyword");
+    var TSNumberKeyword = exports2.TSNumberKeyword = alias("tsNumberKeyword");
+    var TSObjectKeyword = exports2.TSObjectKeyword = alias("tsObjectKeyword");
+    var TSStringKeyword = exports2.TSStringKeyword = alias("tsStringKeyword");
+    var TSSymbolKeyword = exports2.TSSymbolKeyword = alias("tsSymbolKeyword");
+    var TSUndefinedKeyword = exports2.TSUndefinedKeyword = alias("tsUndefinedKeyword");
+    var TSUnknownKeyword = exports2.TSUnknownKeyword = alias("tsUnknownKeyword");
+    var TSVoidKeyword = exports2.TSVoidKeyword = alias("tsVoidKeyword");
+    var TSThisType = exports2.TSThisType = alias("tsThisType");
+    var TSFunctionType = exports2.TSFunctionType = alias("tsFunctionType");
+    var TSConstructorType = exports2.TSConstructorType = alias("tsConstructorType");
+    var TSTypeReference = exports2.TSTypeReference = alias("tsTypeReference");
+    var TSTypePredicate = exports2.TSTypePredicate = alias("tsTypePredicate");
+    var TSTypeQuery = exports2.TSTypeQuery = alias("tsTypeQuery");
+    var TSTypeLiteral = exports2.TSTypeLiteral = alias("tsTypeLiteral");
+    var TSArrayType = exports2.TSArrayType = alias("tsArrayType");
+    var TSTupleType = exports2.TSTupleType = alias("tsTupleType");
+    var TSOptionalType = exports2.TSOptionalType = alias("tsOptionalType");
+    var TSRestType = exports2.TSRestType = alias("tsRestType");
+    var TSNamedTupleMember = exports2.TSNamedTupleMember = alias("tsNamedTupleMember");
+    var TSUnionType = exports2.TSUnionType = alias("tsUnionType");
+    var TSIntersectionType = exports2.TSIntersectionType = alias("tsIntersectionType");
+    var TSConditionalType = exports2.TSConditionalType = alias("tsConditionalType");
+    var TSInferType = exports2.TSInferType = alias("tsInferType");
+    var TSParenthesizedType = exports2.TSParenthesizedType = alias("tsParenthesizedType");
+    var TSTypeOperator = exports2.TSTypeOperator = alias("tsTypeOperator");
+    var TSIndexedAccessType = exports2.TSIndexedAccessType = alias("tsIndexedAccessType");
+    var TSMappedType = exports2.TSMappedType = alias("tsMappedType");
+    var TSTemplateLiteralType = exports2.TSTemplateLiteralType = alias("tsTemplateLiteralType");
+    var TSLiteralType = exports2.TSLiteralType = alias("tsLiteralType");
+    var TSExpressionWithTypeArguments = exports2.TSExpressionWithTypeArguments = alias("tsExpressionWithTypeArguments");
+    var TSInterfaceDeclaration = exports2.TSInterfaceDeclaration = alias("tsInterfaceDeclaration");
+    var TSInterfaceBody = exports2.TSInterfaceBody = alias("tsInterfaceBody");
+    var TSTypeAliasDeclaration = exports2.TSTypeAliasDeclaration = alias("tsTypeAliasDeclaration");
+    var TSInstantiationExpression = exports2.TSInstantiationExpression = alias("tsInstantiationExpression");
+    var TSAsExpression = exports2.TSAsExpression = alias("tsAsExpression");
+    var TSSatisfiesExpression = exports2.TSSatisfiesExpression = alias("tsSatisfiesExpression");
+    var TSTypeAssertion = exports2.TSTypeAssertion = alias("tsTypeAssertion");
+    var TSEnumBody = exports2.TSEnumBody = alias("tsEnumBody");
+    var TSEnumDeclaration = exports2.TSEnumDeclaration = alias("tsEnumDeclaration");
+    var TSEnumMember = exports2.TSEnumMember = alias("tsEnumMember");
+    var TSModuleDeclaration = exports2.TSModuleDeclaration = alias("tsModuleDeclaration");
+    var TSModuleBlock = exports2.TSModuleBlock = alias("tsModuleBlock");
+    var TSImportType = exports2.TSImportType = alias("tsImportType");
+    var TSImportEqualsDeclaration = exports2.TSImportEqualsDeclaration = alias("tsImportEqualsDeclaration");
+    var TSExternalModuleReference = exports2.TSExternalModuleReference = alias("tsExternalModuleReference");
+    var TSNonNullExpression = exports2.TSNonNullExpression = alias("tsNonNullExpression");
+    var TSExportAssignment = exports2.TSExportAssignment = alias("tsExportAssignment");
+    var TSNamespaceExportDeclaration = exports2.TSNamespaceExportDeclaration = alias("tsNamespaceExportDeclaration");
+    var TSTypeAnnotation = exports2.TSTypeAnnotation = alias("tsTypeAnnotation");
+    var TSTypeParameterInstantiation = exports2.TSTypeParameterInstantiation = alias("tsTypeParameterInstantiation");
+    var TSTypeParameterDeclaration = exports2.TSTypeParameterDeclaration = alias("tsTypeParameterDeclaration");
+    var TSTypeParameter = exports2.TSTypeParameter = alias("tsTypeParameter");
+    var NumberLiteral = exports2.NumberLiteral = b.numberLiteral;
+    var RegexLiteral = exports2.RegexLiteral = b.regexLiteral;
+    var RestProperty = exports2.RestProperty = b.restProperty;
+    var SpreadProperty = exports2.SpreadProperty = b.spreadProperty;
   }
 });
 
 // node_modules/@babel/types/lib/builders/generated/index.js
 var require_generated2 = __commonJS({
-  "node_modules/@babel/types/lib/builders/generated/index.js"(exports) {
+  "node_modules/@babel/types/lib/builders/generated/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
     var _lowercase2 = require_lowercase();
     Object.keys(_lowercase2).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _lowercase2[key])
+      if (key in exports2 && exports2[key] === _lowercase2[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _lowercase2[key];
@@ -10873,9 +14566,9 @@ var require_generated2 = __commonJS({
     Object.keys(_uppercase2).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _uppercase2[key])
+      if (key in exports2 && exports2[key] === _uppercase2[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _uppercase2[key];
@@ -10887,12 +14580,12 @@ var require_generated2 = __commonJS({
 
 // node_modules/@babel/types/lib/utils/react/cleanJSXElementLiteralChild.js
 var require_cleanJSXElementLiteralChild = __commonJS({
-  "node_modules/@babel/types/lib/utils/react/cleanJSXElementLiteralChild.js"(exports) {
+  "node_modules/@babel/types/lib/utils/react/cleanJSXElementLiteralChild.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = cleanJSXElementLiteralChild;
+    exports2.default = cleanJSXElementLiteralChild;
     var _index = require_generated2();
     var _index2 = require_lib3();
     function cleanJSXElementLiteralChild(child, args) {
@@ -10931,12 +14624,12 @@ var require_cleanJSXElementLiteralChild = __commonJS({
 
 // node_modules/@babel/types/lib/builders/react/buildChildren.js
 var require_buildChildren = __commonJS({
-  "node_modules/@babel/types/lib/builders/react/buildChildren.js"(exports) {
+  "node_modules/@babel/types/lib/builders/react/buildChildren.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = buildChildren;
+    exports2.default = buildChildren;
     var _index = require_generated();
     var _cleanJSXElementLiteralChild = require_cleanJSXElementLiteralChild();
     function buildChildren(node) {
@@ -10960,12 +14653,12 @@ var require_buildChildren = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isNode.js
 var require_isNode = __commonJS({
-  "node_modules/@babel/types/lib/validators/isNode.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isNode.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isNode;
+    exports2.default = isNode;
     var _index = require_definitions();
     function isNode(node) {
       return !!(node && _index.VISITOR_KEYS[node.type]);
@@ -10975,12 +14668,12 @@ var require_isNode = __commonJS({
 
 // node_modules/@babel/types/lib/asserts/assertNode.js
 var require_assertNode = __commonJS({
-  "node_modules/@babel/types/lib/asserts/assertNode.js"(exports) {
+  "node_modules/@babel/types/lib/asserts/assertNode.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = assertNode;
+    exports2.default = assertNode;
     var _isNode = require_isNode();
     function assertNode(node) {
       if (!(0, _isNode.default)(node)) {
@@ -10994,317 +14687,317 @@ var require_assertNode = __commonJS({
 
 // node_modules/@babel/types/lib/asserts/generated/index.js
 var require_generated3 = __commonJS({
-  "node_modules/@babel/types/lib/asserts/generated/index.js"(exports) {
+  "node_modules/@babel/types/lib/asserts/generated/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.assertAccessor = assertAccessor;
-    exports.assertAnyTypeAnnotation = assertAnyTypeAnnotation;
-    exports.assertArgumentPlaceholder = assertArgumentPlaceholder;
-    exports.assertArrayExpression = assertArrayExpression;
-    exports.assertArrayPattern = assertArrayPattern;
-    exports.assertArrayTypeAnnotation = assertArrayTypeAnnotation;
-    exports.assertArrowFunctionExpression = assertArrowFunctionExpression;
-    exports.assertAssignmentExpression = assertAssignmentExpression;
-    exports.assertAssignmentPattern = assertAssignmentPattern;
-    exports.assertAwaitExpression = assertAwaitExpression;
-    exports.assertBigIntLiteral = assertBigIntLiteral;
-    exports.assertBinary = assertBinary;
-    exports.assertBinaryExpression = assertBinaryExpression;
-    exports.assertBindExpression = assertBindExpression;
-    exports.assertBlock = assertBlock;
-    exports.assertBlockParent = assertBlockParent;
-    exports.assertBlockStatement = assertBlockStatement;
-    exports.assertBooleanLiteral = assertBooleanLiteral;
-    exports.assertBooleanLiteralTypeAnnotation = assertBooleanLiteralTypeAnnotation;
-    exports.assertBooleanTypeAnnotation = assertBooleanTypeAnnotation;
-    exports.assertBreakStatement = assertBreakStatement;
-    exports.assertCallExpression = assertCallExpression;
-    exports.assertCatchClause = assertCatchClause;
-    exports.assertClass = assertClass;
-    exports.assertClassAccessorProperty = assertClassAccessorProperty;
-    exports.assertClassBody = assertClassBody;
-    exports.assertClassDeclaration = assertClassDeclaration;
-    exports.assertClassExpression = assertClassExpression;
-    exports.assertClassImplements = assertClassImplements;
-    exports.assertClassMethod = assertClassMethod;
-    exports.assertClassPrivateMethod = assertClassPrivateMethod;
-    exports.assertClassPrivateProperty = assertClassPrivateProperty;
-    exports.assertClassProperty = assertClassProperty;
-    exports.assertCompletionStatement = assertCompletionStatement;
-    exports.assertConditional = assertConditional;
-    exports.assertConditionalExpression = assertConditionalExpression;
-    exports.assertContinueStatement = assertContinueStatement;
-    exports.assertDebuggerStatement = assertDebuggerStatement;
-    exports.assertDecimalLiteral = assertDecimalLiteral;
-    exports.assertDeclaration = assertDeclaration;
-    exports.assertDeclareClass = assertDeclareClass;
-    exports.assertDeclareExportAllDeclaration = assertDeclareExportAllDeclaration;
-    exports.assertDeclareExportDeclaration = assertDeclareExportDeclaration;
-    exports.assertDeclareFunction = assertDeclareFunction;
-    exports.assertDeclareInterface = assertDeclareInterface;
-    exports.assertDeclareModule = assertDeclareModule;
-    exports.assertDeclareModuleExports = assertDeclareModuleExports;
-    exports.assertDeclareOpaqueType = assertDeclareOpaqueType;
-    exports.assertDeclareTypeAlias = assertDeclareTypeAlias;
-    exports.assertDeclareVariable = assertDeclareVariable;
-    exports.assertDeclaredPredicate = assertDeclaredPredicate;
-    exports.assertDecorator = assertDecorator;
-    exports.assertDirective = assertDirective;
-    exports.assertDirectiveLiteral = assertDirectiveLiteral;
-    exports.assertDoExpression = assertDoExpression;
-    exports.assertDoWhileStatement = assertDoWhileStatement;
-    exports.assertEmptyStatement = assertEmptyStatement;
-    exports.assertEmptyTypeAnnotation = assertEmptyTypeAnnotation;
-    exports.assertEnumBody = assertEnumBody;
-    exports.assertEnumBooleanBody = assertEnumBooleanBody;
-    exports.assertEnumBooleanMember = assertEnumBooleanMember;
-    exports.assertEnumDeclaration = assertEnumDeclaration;
-    exports.assertEnumDefaultedMember = assertEnumDefaultedMember;
-    exports.assertEnumMember = assertEnumMember;
-    exports.assertEnumNumberBody = assertEnumNumberBody;
-    exports.assertEnumNumberMember = assertEnumNumberMember;
-    exports.assertEnumStringBody = assertEnumStringBody;
-    exports.assertEnumStringMember = assertEnumStringMember;
-    exports.assertEnumSymbolBody = assertEnumSymbolBody;
-    exports.assertExistsTypeAnnotation = assertExistsTypeAnnotation;
-    exports.assertExportAllDeclaration = assertExportAllDeclaration;
-    exports.assertExportDeclaration = assertExportDeclaration;
-    exports.assertExportDefaultDeclaration = assertExportDefaultDeclaration;
-    exports.assertExportDefaultSpecifier = assertExportDefaultSpecifier;
-    exports.assertExportNamedDeclaration = assertExportNamedDeclaration;
-    exports.assertExportNamespaceSpecifier = assertExportNamespaceSpecifier;
-    exports.assertExportSpecifier = assertExportSpecifier;
-    exports.assertExpression = assertExpression;
-    exports.assertExpressionStatement = assertExpressionStatement;
-    exports.assertExpressionWrapper = assertExpressionWrapper;
-    exports.assertFile = assertFile;
-    exports.assertFlow = assertFlow;
-    exports.assertFlowBaseAnnotation = assertFlowBaseAnnotation;
-    exports.assertFlowDeclaration = assertFlowDeclaration;
-    exports.assertFlowPredicate = assertFlowPredicate;
-    exports.assertFlowType = assertFlowType;
-    exports.assertFor = assertFor;
-    exports.assertForInStatement = assertForInStatement;
-    exports.assertForOfStatement = assertForOfStatement;
-    exports.assertForStatement = assertForStatement;
-    exports.assertForXStatement = assertForXStatement;
-    exports.assertFunction = assertFunction;
-    exports.assertFunctionDeclaration = assertFunctionDeclaration;
-    exports.assertFunctionExpression = assertFunctionExpression;
-    exports.assertFunctionParent = assertFunctionParent;
-    exports.assertFunctionTypeAnnotation = assertFunctionTypeAnnotation;
-    exports.assertFunctionTypeParam = assertFunctionTypeParam;
-    exports.assertGenericTypeAnnotation = assertGenericTypeAnnotation;
-    exports.assertIdentifier = assertIdentifier;
-    exports.assertIfStatement = assertIfStatement;
-    exports.assertImmutable = assertImmutable;
-    exports.assertImport = assertImport;
-    exports.assertImportAttribute = assertImportAttribute;
-    exports.assertImportDeclaration = assertImportDeclaration;
-    exports.assertImportDefaultSpecifier = assertImportDefaultSpecifier;
-    exports.assertImportExpression = assertImportExpression;
-    exports.assertImportNamespaceSpecifier = assertImportNamespaceSpecifier;
-    exports.assertImportOrExportDeclaration = assertImportOrExportDeclaration;
-    exports.assertImportSpecifier = assertImportSpecifier;
-    exports.assertIndexedAccessType = assertIndexedAccessType;
-    exports.assertInferredPredicate = assertInferredPredicate;
-    exports.assertInterfaceDeclaration = assertInterfaceDeclaration;
-    exports.assertInterfaceExtends = assertInterfaceExtends;
-    exports.assertInterfaceTypeAnnotation = assertInterfaceTypeAnnotation;
-    exports.assertInterpreterDirective = assertInterpreterDirective;
-    exports.assertIntersectionTypeAnnotation = assertIntersectionTypeAnnotation;
-    exports.assertJSX = assertJSX;
-    exports.assertJSXAttribute = assertJSXAttribute;
-    exports.assertJSXClosingElement = assertJSXClosingElement;
-    exports.assertJSXClosingFragment = assertJSXClosingFragment;
-    exports.assertJSXElement = assertJSXElement;
-    exports.assertJSXEmptyExpression = assertJSXEmptyExpression;
-    exports.assertJSXExpressionContainer = assertJSXExpressionContainer;
-    exports.assertJSXFragment = assertJSXFragment;
-    exports.assertJSXIdentifier = assertJSXIdentifier;
-    exports.assertJSXMemberExpression = assertJSXMemberExpression;
-    exports.assertJSXNamespacedName = assertJSXNamespacedName;
-    exports.assertJSXOpeningElement = assertJSXOpeningElement;
-    exports.assertJSXOpeningFragment = assertJSXOpeningFragment;
-    exports.assertJSXSpreadAttribute = assertJSXSpreadAttribute;
-    exports.assertJSXSpreadChild = assertJSXSpreadChild;
-    exports.assertJSXText = assertJSXText;
-    exports.assertLVal = assertLVal;
-    exports.assertLabeledStatement = assertLabeledStatement;
-    exports.assertLiteral = assertLiteral;
-    exports.assertLogicalExpression = assertLogicalExpression;
-    exports.assertLoop = assertLoop;
-    exports.assertMemberExpression = assertMemberExpression;
-    exports.assertMetaProperty = assertMetaProperty;
-    exports.assertMethod = assertMethod;
-    exports.assertMiscellaneous = assertMiscellaneous;
-    exports.assertMixedTypeAnnotation = assertMixedTypeAnnotation;
-    exports.assertModuleDeclaration = assertModuleDeclaration;
-    exports.assertModuleExpression = assertModuleExpression;
-    exports.assertModuleSpecifier = assertModuleSpecifier;
-    exports.assertNewExpression = assertNewExpression;
-    exports.assertNoop = assertNoop;
-    exports.assertNullLiteral = assertNullLiteral;
-    exports.assertNullLiteralTypeAnnotation = assertNullLiteralTypeAnnotation;
-    exports.assertNullableTypeAnnotation = assertNullableTypeAnnotation;
-    exports.assertNumberLiteral = assertNumberLiteral;
-    exports.assertNumberLiteralTypeAnnotation = assertNumberLiteralTypeAnnotation;
-    exports.assertNumberTypeAnnotation = assertNumberTypeAnnotation;
-    exports.assertNumericLiteral = assertNumericLiteral;
-    exports.assertObjectExpression = assertObjectExpression;
-    exports.assertObjectMember = assertObjectMember;
-    exports.assertObjectMethod = assertObjectMethod;
-    exports.assertObjectPattern = assertObjectPattern;
-    exports.assertObjectProperty = assertObjectProperty;
-    exports.assertObjectTypeAnnotation = assertObjectTypeAnnotation;
-    exports.assertObjectTypeCallProperty = assertObjectTypeCallProperty;
-    exports.assertObjectTypeIndexer = assertObjectTypeIndexer;
-    exports.assertObjectTypeInternalSlot = assertObjectTypeInternalSlot;
-    exports.assertObjectTypeProperty = assertObjectTypeProperty;
-    exports.assertObjectTypeSpreadProperty = assertObjectTypeSpreadProperty;
-    exports.assertOpaqueType = assertOpaqueType;
-    exports.assertOptionalCallExpression = assertOptionalCallExpression;
-    exports.assertOptionalIndexedAccessType = assertOptionalIndexedAccessType;
-    exports.assertOptionalMemberExpression = assertOptionalMemberExpression;
-    exports.assertParenthesizedExpression = assertParenthesizedExpression;
-    exports.assertPattern = assertPattern;
-    exports.assertPatternLike = assertPatternLike;
-    exports.assertPipelineBareFunction = assertPipelineBareFunction;
-    exports.assertPipelinePrimaryTopicReference = assertPipelinePrimaryTopicReference;
-    exports.assertPipelineTopicExpression = assertPipelineTopicExpression;
-    exports.assertPlaceholder = assertPlaceholder;
-    exports.assertPrivate = assertPrivate;
-    exports.assertPrivateName = assertPrivateName;
-    exports.assertProgram = assertProgram;
-    exports.assertProperty = assertProperty;
-    exports.assertPureish = assertPureish;
-    exports.assertQualifiedTypeIdentifier = assertQualifiedTypeIdentifier;
-    exports.assertRecordExpression = assertRecordExpression;
-    exports.assertRegExpLiteral = assertRegExpLiteral;
-    exports.assertRegexLiteral = assertRegexLiteral;
-    exports.assertRestElement = assertRestElement;
-    exports.assertRestProperty = assertRestProperty;
-    exports.assertReturnStatement = assertReturnStatement;
-    exports.assertScopable = assertScopable;
-    exports.assertSequenceExpression = assertSequenceExpression;
-    exports.assertSpreadElement = assertSpreadElement;
-    exports.assertSpreadProperty = assertSpreadProperty;
-    exports.assertStandardized = assertStandardized;
-    exports.assertStatement = assertStatement;
-    exports.assertStaticBlock = assertStaticBlock;
-    exports.assertStringLiteral = assertStringLiteral;
-    exports.assertStringLiteralTypeAnnotation = assertStringLiteralTypeAnnotation;
-    exports.assertStringTypeAnnotation = assertStringTypeAnnotation;
-    exports.assertSuper = assertSuper;
-    exports.assertSwitchCase = assertSwitchCase;
-    exports.assertSwitchStatement = assertSwitchStatement;
-    exports.assertSymbolTypeAnnotation = assertSymbolTypeAnnotation;
-    exports.assertTSAnyKeyword = assertTSAnyKeyword;
-    exports.assertTSArrayType = assertTSArrayType;
-    exports.assertTSAsExpression = assertTSAsExpression;
-    exports.assertTSBaseType = assertTSBaseType;
-    exports.assertTSBigIntKeyword = assertTSBigIntKeyword;
-    exports.assertTSBooleanKeyword = assertTSBooleanKeyword;
-    exports.assertTSCallSignatureDeclaration = assertTSCallSignatureDeclaration;
-    exports.assertTSConditionalType = assertTSConditionalType;
-    exports.assertTSConstructSignatureDeclaration = assertTSConstructSignatureDeclaration;
-    exports.assertTSConstructorType = assertTSConstructorType;
-    exports.assertTSDeclareFunction = assertTSDeclareFunction;
-    exports.assertTSDeclareMethod = assertTSDeclareMethod;
-    exports.assertTSEntityName = assertTSEntityName;
-    exports.assertTSEnumBody = assertTSEnumBody;
-    exports.assertTSEnumDeclaration = assertTSEnumDeclaration;
-    exports.assertTSEnumMember = assertTSEnumMember;
-    exports.assertTSExportAssignment = assertTSExportAssignment;
-    exports.assertTSExpressionWithTypeArguments = assertTSExpressionWithTypeArguments;
-    exports.assertTSExternalModuleReference = assertTSExternalModuleReference;
-    exports.assertTSFunctionType = assertTSFunctionType;
-    exports.assertTSImportEqualsDeclaration = assertTSImportEqualsDeclaration;
-    exports.assertTSImportType = assertTSImportType;
-    exports.assertTSIndexSignature = assertTSIndexSignature;
-    exports.assertTSIndexedAccessType = assertTSIndexedAccessType;
-    exports.assertTSInferType = assertTSInferType;
-    exports.assertTSInstantiationExpression = assertTSInstantiationExpression;
-    exports.assertTSInterfaceBody = assertTSInterfaceBody;
-    exports.assertTSInterfaceDeclaration = assertTSInterfaceDeclaration;
-    exports.assertTSIntersectionType = assertTSIntersectionType;
-    exports.assertTSIntrinsicKeyword = assertTSIntrinsicKeyword;
-    exports.assertTSLiteralType = assertTSLiteralType;
-    exports.assertTSMappedType = assertTSMappedType;
-    exports.assertTSMethodSignature = assertTSMethodSignature;
-    exports.assertTSModuleBlock = assertTSModuleBlock;
-    exports.assertTSModuleDeclaration = assertTSModuleDeclaration;
-    exports.assertTSNamedTupleMember = assertTSNamedTupleMember;
-    exports.assertTSNamespaceExportDeclaration = assertTSNamespaceExportDeclaration;
-    exports.assertTSNeverKeyword = assertTSNeverKeyword;
-    exports.assertTSNonNullExpression = assertTSNonNullExpression;
-    exports.assertTSNullKeyword = assertTSNullKeyword;
-    exports.assertTSNumberKeyword = assertTSNumberKeyword;
-    exports.assertTSObjectKeyword = assertTSObjectKeyword;
-    exports.assertTSOptionalType = assertTSOptionalType;
-    exports.assertTSParameterProperty = assertTSParameterProperty;
-    exports.assertTSParenthesizedType = assertTSParenthesizedType;
-    exports.assertTSPropertySignature = assertTSPropertySignature;
-    exports.assertTSQualifiedName = assertTSQualifiedName;
-    exports.assertTSRestType = assertTSRestType;
-    exports.assertTSSatisfiesExpression = assertTSSatisfiesExpression;
-    exports.assertTSStringKeyword = assertTSStringKeyword;
-    exports.assertTSSymbolKeyword = assertTSSymbolKeyword;
-    exports.assertTSTemplateLiteralType = assertTSTemplateLiteralType;
-    exports.assertTSThisType = assertTSThisType;
-    exports.assertTSTupleType = assertTSTupleType;
-    exports.assertTSType = assertTSType;
-    exports.assertTSTypeAliasDeclaration = assertTSTypeAliasDeclaration;
-    exports.assertTSTypeAnnotation = assertTSTypeAnnotation;
-    exports.assertTSTypeAssertion = assertTSTypeAssertion;
-    exports.assertTSTypeElement = assertTSTypeElement;
-    exports.assertTSTypeLiteral = assertTSTypeLiteral;
-    exports.assertTSTypeOperator = assertTSTypeOperator;
-    exports.assertTSTypeParameter = assertTSTypeParameter;
-    exports.assertTSTypeParameterDeclaration = assertTSTypeParameterDeclaration;
-    exports.assertTSTypeParameterInstantiation = assertTSTypeParameterInstantiation;
-    exports.assertTSTypePredicate = assertTSTypePredicate;
-    exports.assertTSTypeQuery = assertTSTypeQuery;
-    exports.assertTSTypeReference = assertTSTypeReference;
-    exports.assertTSUndefinedKeyword = assertTSUndefinedKeyword;
-    exports.assertTSUnionType = assertTSUnionType;
-    exports.assertTSUnknownKeyword = assertTSUnknownKeyword;
-    exports.assertTSVoidKeyword = assertTSVoidKeyword;
-    exports.assertTaggedTemplateExpression = assertTaggedTemplateExpression;
-    exports.assertTemplateElement = assertTemplateElement;
-    exports.assertTemplateLiteral = assertTemplateLiteral;
-    exports.assertTerminatorless = assertTerminatorless;
-    exports.assertThisExpression = assertThisExpression;
-    exports.assertThisTypeAnnotation = assertThisTypeAnnotation;
-    exports.assertThrowStatement = assertThrowStatement;
-    exports.assertTopicReference = assertTopicReference;
-    exports.assertTryStatement = assertTryStatement;
-    exports.assertTupleExpression = assertTupleExpression;
-    exports.assertTupleTypeAnnotation = assertTupleTypeAnnotation;
-    exports.assertTypeAlias = assertTypeAlias;
-    exports.assertTypeAnnotation = assertTypeAnnotation;
-    exports.assertTypeCastExpression = assertTypeCastExpression;
-    exports.assertTypeParameter = assertTypeParameter;
-    exports.assertTypeParameterDeclaration = assertTypeParameterDeclaration;
-    exports.assertTypeParameterInstantiation = assertTypeParameterInstantiation;
-    exports.assertTypeScript = assertTypeScript;
-    exports.assertTypeofTypeAnnotation = assertTypeofTypeAnnotation;
-    exports.assertUnaryExpression = assertUnaryExpression;
-    exports.assertUnaryLike = assertUnaryLike;
-    exports.assertUnionTypeAnnotation = assertUnionTypeAnnotation;
-    exports.assertUpdateExpression = assertUpdateExpression;
-    exports.assertUserWhitespacable = assertUserWhitespacable;
-    exports.assertV8IntrinsicIdentifier = assertV8IntrinsicIdentifier;
-    exports.assertVariableDeclaration = assertVariableDeclaration;
-    exports.assertVariableDeclarator = assertVariableDeclarator;
-    exports.assertVariance = assertVariance;
-    exports.assertVoidTypeAnnotation = assertVoidTypeAnnotation;
-    exports.assertWhile = assertWhile;
-    exports.assertWhileStatement = assertWhileStatement;
-    exports.assertWithStatement = assertWithStatement;
-    exports.assertYieldExpression = assertYieldExpression;
+    exports2.assertAccessor = assertAccessor;
+    exports2.assertAnyTypeAnnotation = assertAnyTypeAnnotation;
+    exports2.assertArgumentPlaceholder = assertArgumentPlaceholder;
+    exports2.assertArrayExpression = assertArrayExpression;
+    exports2.assertArrayPattern = assertArrayPattern;
+    exports2.assertArrayTypeAnnotation = assertArrayTypeAnnotation;
+    exports2.assertArrowFunctionExpression = assertArrowFunctionExpression;
+    exports2.assertAssignmentExpression = assertAssignmentExpression;
+    exports2.assertAssignmentPattern = assertAssignmentPattern;
+    exports2.assertAwaitExpression = assertAwaitExpression;
+    exports2.assertBigIntLiteral = assertBigIntLiteral;
+    exports2.assertBinary = assertBinary;
+    exports2.assertBinaryExpression = assertBinaryExpression;
+    exports2.assertBindExpression = assertBindExpression;
+    exports2.assertBlock = assertBlock;
+    exports2.assertBlockParent = assertBlockParent;
+    exports2.assertBlockStatement = assertBlockStatement;
+    exports2.assertBooleanLiteral = assertBooleanLiteral;
+    exports2.assertBooleanLiteralTypeAnnotation = assertBooleanLiteralTypeAnnotation;
+    exports2.assertBooleanTypeAnnotation = assertBooleanTypeAnnotation;
+    exports2.assertBreakStatement = assertBreakStatement;
+    exports2.assertCallExpression = assertCallExpression;
+    exports2.assertCatchClause = assertCatchClause;
+    exports2.assertClass = assertClass;
+    exports2.assertClassAccessorProperty = assertClassAccessorProperty;
+    exports2.assertClassBody = assertClassBody;
+    exports2.assertClassDeclaration = assertClassDeclaration;
+    exports2.assertClassExpression = assertClassExpression;
+    exports2.assertClassImplements = assertClassImplements;
+    exports2.assertClassMethod = assertClassMethod;
+    exports2.assertClassPrivateMethod = assertClassPrivateMethod;
+    exports2.assertClassPrivateProperty = assertClassPrivateProperty;
+    exports2.assertClassProperty = assertClassProperty;
+    exports2.assertCompletionStatement = assertCompletionStatement;
+    exports2.assertConditional = assertConditional;
+    exports2.assertConditionalExpression = assertConditionalExpression;
+    exports2.assertContinueStatement = assertContinueStatement;
+    exports2.assertDebuggerStatement = assertDebuggerStatement;
+    exports2.assertDecimalLiteral = assertDecimalLiteral;
+    exports2.assertDeclaration = assertDeclaration;
+    exports2.assertDeclareClass = assertDeclareClass;
+    exports2.assertDeclareExportAllDeclaration = assertDeclareExportAllDeclaration;
+    exports2.assertDeclareExportDeclaration = assertDeclareExportDeclaration;
+    exports2.assertDeclareFunction = assertDeclareFunction;
+    exports2.assertDeclareInterface = assertDeclareInterface;
+    exports2.assertDeclareModule = assertDeclareModule;
+    exports2.assertDeclareModuleExports = assertDeclareModuleExports;
+    exports2.assertDeclareOpaqueType = assertDeclareOpaqueType;
+    exports2.assertDeclareTypeAlias = assertDeclareTypeAlias;
+    exports2.assertDeclareVariable = assertDeclareVariable;
+    exports2.assertDeclaredPredicate = assertDeclaredPredicate;
+    exports2.assertDecorator = assertDecorator;
+    exports2.assertDirective = assertDirective;
+    exports2.assertDirectiveLiteral = assertDirectiveLiteral;
+    exports2.assertDoExpression = assertDoExpression;
+    exports2.assertDoWhileStatement = assertDoWhileStatement;
+    exports2.assertEmptyStatement = assertEmptyStatement;
+    exports2.assertEmptyTypeAnnotation = assertEmptyTypeAnnotation;
+    exports2.assertEnumBody = assertEnumBody;
+    exports2.assertEnumBooleanBody = assertEnumBooleanBody;
+    exports2.assertEnumBooleanMember = assertEnumBooleanMember;
+    exports2.assertEnumDeclaration = assertEnumDeclaration;
+    exports2.assertEnumDefaultedMember = assertEnumDefaultedMember;
+    exports2.assertEnumMember = assertEnumMember;
+    exports2.assertEnumNumberBody = assertEnumNumberBody;
+    exports2.assertEnumNumberMember = assertEnumNumberMember;
+    exports2.assertEnumStringBody = assertEnumStringBody;
+    exports2.assertEnumStringMember = assertEnumStringMember;
+    exports2.assertEnumSymbolBody = assertEnumSymbolBody;
+    exports2.assertExistsTypeAnnotation = assertExistsTypeAnnotation;
+    exports2.assertExportAllDeclaration = assertExportAllDeclaration;
+    exports2.assertExportDeclaration = assertExportDeclaration;
+    exports2.assertExportDefaultDeclaration = assertExportDefaultDeclaration;
+    exports2.assertExportDefaultSpecifier = assertExportDefaultSpecifier;
+    exports2.assertExportNamedDeclaration = assertExportNamedDeclaration;
+    exports2.assertExportNamespaceSpecifier = assertExportNamespaceSpecifier;
+    exports2.assertExportSpecifier = assertExportSpecifier;
+    exports2.assertExpression = assertExpression;
+    exports2.assertExpressionStatement = assertExpressionStatement;
+    exports2.assertExpressionWrapper = assertExpressionWrapper;
+    exports2.assertFile = assertFile;
+    exports2.assertFlow = assertFlow;
+    exports2.assertFlowBaseAnnotation = assertFlowBaseAnnotation;
+    exports2.assertFlowDeclaration = assertFlowDeclaration;
+    exports2.assertFlowPredicate = assertFlowPredicate;
+    exports2.assertFlowType = assertFlowType;
+    exports2.assertFor = assertFor;
+    exports2.assertForInStatement = assertForInStatement;
+    exports2.assertForOfStatement = assertForOfStatement;
+    exports2.assertForStatement = assertForStatement;
+    exports2.assertForXStatement = assertForXStatement;
+    exports2.assertFunction = assertFunction;
+    exports2.assertFunctionDeclaration = assertFunctionDeclaration;
+    exports2.assertFunctionExpression = assertFunctionExpression;
+    exports2.assertFunctionParent = assertFunctionParent;
+    exports2.assertFunctionTypeAnnotation = assertFunctionTypeAnnotation;
+    exports2.assertFunctionTypeParam = assertFunctionTypeParam;
+    exports2.assertGenericTypeAnnotation = assertGenericTypeAnnotation;
+    exports2.assertIdentifier = assertIdentifier;
+    exports2.assertIfStatement = assertIfStatement;
+    exports2.assertImmutable = assertImmutable;
+    exports2.assertImport = assertImport;
+    exports2.assertImportAttribute = assertImportAttribute;
+    exports2.assertImportDeclaration = assertImportDeclaration;
+    exports2.assertImportDefaultSpecifier = assertImportDefaultSpecifier;
+    exports2.assertImportExpression = assertImportExpression;
+    exports2.assertImportNamespaceSpecifier = assertImportNamespaceSpecifier;
+    exports2.assertImportOrExportDeclaration = assertImportOrExportDeclaration;
+    exports2.assertImportSpecifier = assertImportSpecifier;
+    exports2.assertIndexedAccessType = assertIndexedAccessType;
+    exports2.assertInferredPredicate = assertInferredPredicate;
+    exports2.assertInterfaceDeclaration = assertInterfaceDeclaration;
+    exports2.assertInterfaceExtends = assertInterfaceExtends;
+    exports2.assertInterfaceTypeAnnotation = assertInterfaceTypeAnnotation;
+    exports2.assertInterpreterDirective = assertInterpreterDirective;
+    exports2.assertIntersectionTypeAnnotation = assertIntersectionTypeAnnotation;
+    exports2.assertJSX = assertJSX;
+    exports2.assertJSXAttribute = assertJSXAttribute;
+    exports2.assertJSXClosingElement = assertJSXClosingElement;
+    exports2.assertJSXClosingFragment = assertJSXClosingFragment;
+    exports2.assertJSXElement = assertJSXElement;
+    exports2.assertJSXEmptyExpression = assertJSXEmptyExpression;
+    exports2.assertJSXExpressionContainer = assertJSXExpressionContainer;
+    exports2.assertJSXFragment = assertJSXFragment;
+    exports2.assertJSXIdentifier = assertJSXIdentifier;
+    exports2.assertJSXMemberExpression = assertJSXMemberExpression;
+    exports2.assertJSXNamespacedName = assertJSXNamespacedName;
+    exports2.assertJSXOpeningElement = assertJSXOpeningElement;
+    exports2.assertJSXOpeningFragment = assertJSXOpeningFragment;
+    exports2.assertJSXSpreadAttribute = assertJSXSpreadAttribute;
+    exports2.assertJSXSpreadChild = assertJSXSpreadChild;
+    exports2.assertJSXText = assertJSXText;
+    exports2.assertLVal = assertLVal;
+    exports2.assertLabeledStatement = assertLabeledStatement;
+    exports2.assertLiteral = assertLiteral;
+    exports2.assertLogicalExpression = assertLogicalExpression;
+    exports2.assertLoop = assertLoop;
+    exports2.assertMemberExpression = assertMemberExpression;
+    exports2.assertMetaProperty = assertMetaProperty;
+    exports2.assertMethod = assertMethod;
+    exports2.assertMiscellaneous = assertMiscellaneous;
+    exports2.assertMixedTypeAnnotation = assertMixedTypeAnnotation;
+    exports2.assertModuleDeclaration = assertModuleDeclaration;
+    exports2.assertModuleExpression = assertModuleExpression;
+    exports2.assertModuleSpecifier = assertModuleSpecifier;
+    exports2.assertNewExpression = assertNewExpression;
+    exports2.assertNoop = assertNoop;
+    exports2.assertNullLiteral = assertNullLiteral;
+    exports2.assertNullLiteralTypeAnnotation = assertNullLiteralTypeAnnotation;
+    exports2.assertNullableTypeAnnotation = assertNullableTypeAnnotation;
+    exports2.assertNumberLiteral = assertNumberLiteral;
+    exports2.assertNumberLiteralTypeAnnotation = assertNumberLiteralTypeAnnotation;
+    exports2.assertNumberTypeAnnotation = assertNumberTypeAnnotation;
+    exports2.assertNumericLiteral = assertNumericLiteral;
+    exports2.assertObjectExpression = assertObjectExpression;
+    exports2.assertObjectMember = assertObjectMember;
+    exports2.assertObjectMethod = assertObjectMethod;
+    exports2.assertObjectPattern = assertObjectPattern;
+    exports2.assertObjectProperty = assertObjectProperty;
+    exports2.assertObjectTypeAnnotation = assertObjectTypeAnnotation;
+    exports2.assertObjectTypeCallProperty = assertObjectTypeCallProperty;
+    exports2.assertObjectTypeIndexer = assertObjectTypeIndexer;
+    exports2.assertObjectTypeInternalSlot = assertObjectTypeInternalSlot;
+    exports2.assertObjectTypeProperty = assertObjectTypeProperty;
+    exports2.assertObjectTypeSpreadProperty = assertObjectTypeSpreadProperty;
+    exports2.assertOpaqueType = assertOpaqueType;
+    exports2.assertOptionalCallExpression = assertOptionalCallExpression;
+    exports2.assertOptionalIndexedAccessType = assertOptionalIndexedAccessType;
+    exports2.assertOptionalMemberExpression = assertOptionalMemberExpression;
+    exports2.assertParenthesizedExpression = assertParenthesizedExpression;
+    exports2.assertPattern = assertPattern;
+    exports2.assertPatternLike = assertPatternLike;
+    exports2.assertPipelineBareFunction = assertPipelineBareFunction;
+    exports2.assertPipelinePrimaryTopicReference = assertPipelinePrimaryTopicReference;
+    exports2.assertPipelineTopicExpression = assertPipelineTopicExpression;
+    exports2.assertPlaceholder = assertPlaceholder;
+    exports2.assertPrivate = assertPrivate;
+    exports2.assertPrivateName = assertPrivateName;
+    exports2.assertProgram = assertProgram;
+    exports2.assertProperty = assertProperty;
+    exports2.assertPureish = assertPureish;
+    exports2.assertQualifiedTypeIdentifier = assertQualifiedTypeIdentifier;
+    exports2.assertRecordExpression = assertRecordExpression;
+    exports2.assertRegExpLiteral = assertRegExpLiteral;
+    exports2.assertRegexLiteral = assertRegexLiteral;
+    exports2.assertRestElement = assertRestElement;
+    exports2.assertRestProperty = assertRestProperty;
+    exports2.assertReturnStatement = assertReturnStatement;
+    exports2.assertScopable = assertScopable;
+    exports2.assertSequenceExpression = assertSequenceExpression;
+    exports2.assertSpreadElement = assertSpreadElement;
+    exports2.assertSpreadProperty = assertSpreadProperty;
+    exports2.assertStandardized = assertStandardized;
+    exports2.assertStatement = assertStatement;
+    exports2.assertStaticBlock = assertStaticBlock;
+    exports2.assertStringLiteral = assertStringLiteral;
+    exports2.assertStringLiteralTypeAnnotation = assertStringLiteralTypeAnnotation;
+    exports2.assertStringTypeAnnotation = assertStringTypeAnnotation;
+    exports2.assertSuper = assertSuper;
+    exports2.assertSwitchCase = assertSwitchCase;
+    exports2.assertSwitchStatement = assertSwitchStatement;
+    exports2.assertSymbolTypeAnnotation = assertSymbolTypeAnnotation;
+    exports2.assertTSAnyKeyword = assertTSAnyKeyword;
+    exports2.assertTSArrayType = assertTSArrayType;
+    exports2.assertTSAsExpression = assertTSAsExpression;
+    exports2.assertTSBaseType = assertTSBaseType;
+    exports2.assertTSBigIntKeyword = assertTSBigIntKeyword;
+    exports2.assertTSBooleanKeyword = assertTSBooleanKeyword;
+    exports2.assertTSCallSignatureDeclaration = assertTSCallSignatureDeclaration;
+    exports2.assertTSConditionalType = assertTSConditionalType;
+    exports2.assertTSConstructSignatureDeclaration = assertTSConstructSignatureDeclaration;
+    exports2.assertTSConstructorType = assertTSConstructorType;
+    exports2.assertTSDeclareFunction = assertTSDeclareFunction;
+    exports2.assertTSDeclareMethod = assertTSDeclareMethod;
+    exports2.assertTSEntityName = assertTSEntityName;
+    exports2.assertTSEnumBody = assertTSEnumBody;
+    exports2.assertTSEnumDeclaration = assertTSEnumDeclaration;
+    exports2.assertTSEnumMember = assertTSEnumMember;
+    exports2.assertTSExportAssignment = assertTSExportAssignment;
+    exports2.assertTSExpressionWithTypeArguments = assertTSExpressionWithTypeArguments;
+    exports2.assertTSExternalModuleReference = assertTSExternalModuleReference;
+    exports2.assertTSFunctionType = assertTSFunctionType;
+    exports2.assertTSImportEqualsDeclaration = assertTSImportEqualsDeclaration;
+    exports2.assertTSImportType = assertTSImportType;
+    exports2.assertTSIndexSignature = assertTSIndexSignature;
+    exports2.assertTSIndexedAccessType = assertTSIndexedAccessType;
+    exports2.assertTSInferType = assertTSInferType;
+    exports2.assertTSInstantiationExpression = assertTSInstantiationExpression;
+    exports2.assertTSInterfaceBody = assertTSInterfaceBody;
+    exports2.assertTSInterfaceDeclaration = assertTSInterfaceDeclaration;
+    exports2.assertTSIntersectionType = assertTSIntersectionType;
+    exports2.assertTSIntrinsicKeyword = assertTSIntrinsicKeyword;
+    exports2.assertTSLiteralType = assertTSLiteralType;
+    exports2.assertTSMappedType = assertTSMappedType;
+    exports2.assertTSMethodSignature = assertTSMethodSignature;
+    exports2.assertTSModuleBlock = assertTSModuleBlock;
+    exports2.assertTSModuleDeclaration = assertTSModuleDeclaration;
+    exports2.assertTSNamedTupleMember = assertTSNamedTupleMember;
+    exports2.assertTSNamespaceExportDeclaration = assertTSNamespaceExportDeclaration;
+    exports2.assertTSNeverKeyword = assertTSNeverKeyword;
+    exports2.assertTSNonNullExpression = assertTSNonNullExpression;
+    exports2.assertTSNullKeyword = assertTSNullKeyword;
+    exports2.assertTSNumberKeyword = assertTSNumberKeyword;
+    exports2.assertTSObjectKeyword = assertTSObjectKeyword;
+    exports2.assertTSOptionalType = assertTSOptionalType;
+    exports2.assertTSParameterProperty = assertTSParameterProperty;
+    exports2.assertTSParenthesizedType = assertTSParenthesizedType;
+    exports2.assertTSPropertySignature = assertTSPropertySignature;
+    exports2.assertTSQualifiedName = assertTSQualifiedName;
+    exports2.assertTSRestType = assertTSRestType;
+    exports2.assertTSSatisfiesExpression = assertTSSatisfiesExpression;
+    exports2.assertTSStringKeyword = assertTSStringKeyword;
+    exports2.assertTSSymbolKeyword = assertTSSymbolKeyword;
+    exports2.assertTSTemplateLiteralType = assertTSTemplateLiteralType;
+    exports2.assertTSThisType = assertTSThisType;
+    exports2.assertTSTupleType = assertTSTupleType;
+    exports2.assertTSType = assertTSType;
+    exports2.assertTSTypeAliasDeclaration = assertTSTypeAliasDeclaration;
+    exports2.assertTSTypeAnnotation = assertTSTypeAnnotation;
+    exports2.assertTSTypeAssertion = assertTSTypeAssertion;
+    exports2.assertTSTypeElement = assertTSTypeElement;
+    exports2.assertTSTypeLiteral = assertTSTypeLiteral;
+    exports2.assertTSTypeOperator = assertTSTypeOperator;
+    exports2.assertTSTypeParameter = assertTSTypeParameter;
+    exports2.assertTSTypeParameterDeclaration = assertTSTypeParameterDeclaration;
+    exports2.assertTSTypeParameterInstantiation = assertTSTypeParameterInstantiation;
+    exports2.assertTSTypePredicate = assertTSTypePredicate;
+    exports2.assertTSTypeQuery = assertTSTypeQuery;
+    exports2.assertTSTypeReference = assertTSTypeReference;
+    exports2.assertTSUndefinedKeyword = assertTSUndefinedKeyword;
+    exports2.assertTSUnionType = assertTSUnionType;
+    exports2.assertTSUnknownKeyword = assertTSUnknownKeyword;
+    exports2.assertTSVoidKeyword = assertTSVoidKeyword;
+    exports2.assertTaggedTemplateExpression = assertTaggedTemplateExpression;
+    exports2.assertTemplateElement = assertTemplateElement;
+    exports2.assertTemplateLiteral = assertTemplateLiteral;
+    exports2.assertTerminatorless = assertTerminatorless;
+    exports2.assertThisExpression = assertThisExpression;
+    exports2.assertThisTypeAnnotation = assertThisTypeAnnotation;
+    exports2.assertThrowStatement = assertThrowStatement;
+    exports2.assertTopicReference = assertTopicReference;
+    exports2.assertTryStatement = assertTryStatement;
+    exports2.assertTupleExpression = assertTupleExpression;
+    exports2.assertTupleTypeAnnotation = assertTupleTypeAnnotation;
+    exports2.assertTypeAlias = assertTypeAlias;
+    exports2.assertTypeAnnotation = assertTypeAnnotation;
+    exports2.assertTypeCastExpression = assertTypeCastExpression;
+    exports2.assertTypeParameter = assertTypeParameter;
+    exports2.assertTypeParameterDeclaration = assertTypeParameterDeclaration;
+    exports2.assertTypeParameterInstantiation = assertTypeParameterInstantiation;
+    exports2.assertTypeScript = assertTypeScript;
+    exports2.assertTypeofTypeAnnotation = assertTypeofTypeAnnotation;
+    exports2.assertUnaryExpression = assertUnaryExpression;
+    exports2.assertUnaryLike = assertUnaryLike;
+    exports2.assertUnionTypeAnnotation = assertUnionTypeAnnotation;
+    exports2.assertUpdateExpression = assertUpdateExpression;
+    exports2.assertUserWhitespacable = assertUserWhitespacable;
+    exports2.assertV8IntrinsicIdentifier = assertV8IntrinsicIdentifier;
+    exports2.assertVariableDeclaration = assertVariableDeclaration;
+    exports2.assertVariableDeclarator = assertVariableDeclarator;
+    exports2.assertVariance = assertVariance;
+    exports2.assertVoidTypeAnnotation = assertVoidTypeAnnotation;
+    exports2.assertWhile = assertWhile;
+    exports2.assertWhileStatement = assertWhileStatement;
+    exports2.assertWithStatement = assertWithStatement;
+    exports2.assertYieldExpression = assertYieldExpression;
     var _is = require_is();
     var _deprecationWarning = require_deprecationWarning();
     function assert2(type, node, opts) {
@@ -12240,14 +15933,14 @@ var require_generated3 = __commonJS({
 
 // node_modules/@babel/types/lib/builders/flow/createTypeAnnotationBasedOnTypeof.js
 var require_createTypeAnnotationBasedOnTypeof = __commonJS({
-  "node_modules/@babel/types/lib/builders/flow/createTypeAnnotationBasedOnTypeof.js"(exports) {
+  "node_modules/@babel/types/lib/builders/flow/createTypeAnnotationBasedOnTypeof.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _index = require_generated2();
-    var _default3 = exports.default = createTypeAnnotationBasedOnTypeof;
+    var _default3 = exports2.default = createTypeAnnotationBasedOnTypeof;
     function createTypeAnnotationBasedOnTypeof(type) {
       switch (type) {
         case "string":
@@ -12274,12 +15967,12 @@ var require_createTypeAnnotationBasedOnTypeof = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/flow/removeTypeDuplicates.js
 var require_removeTypeDuplicates = __commonJS({
-  "node_modules/@babel/types/lib/modifications/flow/removeTypeDuplicates.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/flow/removeTypeDuplicates.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = removeTypeDuplicates;
+    exports2.default = removeTypeDuplicates;
     var _index = require_generated();
     function getQualifiedName(node) {
       return (0, _index.isIdentifier)(node) ? node.name : `${node.id.name}.${getQualifiedName(node.qualification)}`;
@@ -12343,12 +16036,12 @@ var require_removeTypeDuplicates = __commonJS({
 
 // node_modules/@babel/types/lib/builders/flow/createFlowUnionType.js
 var require_createFlowUnionType = __commonJS({
-  "node_modules/@babel/types/lib/builders/flow/createFlowUnionType.js"(exports) {
+  "node_modules/@babel/types/lib/builders/flow/createFlowUnionType.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = createFlowUnionType;
+    exports2.default = createFlowUnionType;
     var _index = require_generated2();
     var _removeTypeDuplicates = require_removeTypeDuplicates();
     function createFlowUnionType(types2) {
@@ -12364,12 +16057,12 @@ var require_createFlowUnionType = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/typescript/removeTypeDuplicates.js
 var require_removeTypeDuplicates2 = __commonJS({
-  "node_modules/@babel/types/lib/modifications/typescript/removeTypeDuplicates.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/typescript/removeTypeDuplicates.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = removeTypeDuplicates;
+    exports2.default = removeTypeDuplicates;
     var _index = require_generated();
     function getQualifiedName(node) {
       return (0, _index.isIdentifier)(node) ? node.name : (0, _index.isThisExpression)(node) ? "this" : `${node.right.name}.${getQualifiedName(node.left)}`;
@@ -12434,12 +16127,12 @@ var require_removeTypeDuplicates2 = __commonJS({
 
 // node_modules/@babel/types/lib/builders/typescript/createTSUnionType.js
 var require_createTSUnionType = __commonJS({
-  "node_modules/@babel/types/lib/builders/typescript/createTSUnionType.js"(exports) {
+  "node_modules/@babel/types/lib/builders/typescript/createTSUnionType.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = createTSUnionType;
+    exports2.default = createTSUnionType;
     var _index = require_generated2();
     var _removeTypeDuplicates = require_removeTypeDuplicates2();
     var _index2 = require_generated();
@@ -12459,12 +16152,12 @@ var require_createTSUnionType = __commonJS({
 
 // node_modules/@babel/types/lib/builders/productions.js
 var require_productions = __commonJS({
-  "node_modules/@babel/types/lib/builders/productions.js"(exports) {
+  "node_modules/@babel/types/lib/builders/productions.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.buildUndefinedNode = buildUndefinedNode;
+    exports2.buildUndefinedNode = buildUndefinedNode;
     var _index = require_generated2();
     function buildUndefinedNode() {
       return (0, _index.unaryExpression)("void", (0, _index.numericLiteral)(0), true);
@@ -12474,12 +16167,12 @@ var require_productions = __commonJS({
 
 // node_modules/@babel/types/lib/clone/cloneNode.js
 var require_cloneNode = __commonJS({
-  "node_modules/@babel/types/lib/clone/cloneNode.js"(exports) {
+  "node_modules/@babel/types/lib/clone/cloneNode.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = cloneNode;
+    exports2.default = cloneNode;
     var _index = require_definitions();
     var _index2 = require_generated();
     var {
@@ -12586,12 +16279,12 @@ var require_cloneNode = __commonJS({
 
 // node_modules/@babel/types/lib/clone/clone.js
 var require_clone = __commonJS({
-  "node_modules/@babel/types/lib/clone/clone.js"(exports) {
+  "node_modules/@babel/types/lib/clone/clone.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = clone2;
+    exports2.default = clone2;
     var _cloneNode = require_cloneNode();
     function clone2(node) {
       return (0, _cloneNode.default)(node, false);
@@ -12601,12 +16294,12 @@ var require_clone = __commonJS({
 
 // node_modules/@babel/types/lib/clone/cloneDeep.js
 var require_cloneDeep = __commonJS({
-  "node_modules/@babel/types/lib/clone/cloneDeep.js"(exports) {
+  "node_modules/@babel/types/lib/clone/cloneDeep.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = cloneDeep;
+    exports2.default = cloneDeep;
     var _cloneNode = require_cloneNode();
     function cloneDeep(node) {
       return (0, _cloneNode.default)(node);
@@ -12616,12 +16309,12 @@ var require_cloneDeep = __commonJS({
 
 // node_modules/@babel/types/lib/clone/cloneDeepWithoutLoc.js
 var require_cloneDeepWithoutLoc = __commonJS({
-  "node_modules/@babel/types/lib/clone/cloneDeepWithoutLoc.js"(exports) {
+  "node_modules/@babel/types/lib/clone/cloneDeepWithoutLoc.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = cloneDeepWithoutLoc;
+    exports2.default = cloneDeepWithoutLoc;
     var _cloneNode = require_cloneNode();
     function cloneDeepWithoutLoc(node) {
       return (0, _cloneNode.default)(node, true, true);
@@ -12631,12 +16324,12 @@ var require_cloneDeepWithoutLoc = __commonJS({
 
 // node_modules/@babel/types/lib/clone/cloneWithoutLoc.js
 var require_cloneWithoutLoc = __commonJS({
-  "node_modules/@babel/types/lib/clone/cloneWithoutLoc.js"(exports) {
+  "node_modules/@babel/types/lib/clone/cloneWithoutLoc.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = cloneWithoutLoc;
+    exports2.default = cloneWithoutLoc;
     var _cloneNode = require_cloneNode();
     function cloneWithoutLoc(node) {
       return (0, _cloneNode.default)(node, false, true);
@@ -12646,12 +16339,12 @@ var require_cloneWithoutLoc = __commonJS({
 
 // node_modules/@babel/types/lib/comments/addComments.js
 var require_addComments = __commonJS({
-  "node_modules/@babel/types/lib/comments/addComments.js"(exports) {
+  "node_modules/@babel/types/lib/comments/addComments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = addComments;
+    exports2.default = addComments;
     function addComments(node, type, comments) {
       if (!comments || !node)
         return node;
@@ -12672,12 +16365,12 @@ var require_addComments = __commonJS({
 
 // node_modules/@babel/types/lib/comments/addComment.js
 var require_addComment = __commonJS({
-  "node_modules/@babel/types/lib/comments/addComment.js"(exports) {
+  "node_modules/@babel/types/lib/comments/addComment.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = addComment;
+    exports2.default = addComment;
     var _addComments = require_addComments();
     function addComment(node, type, content, line2) {
       return (0, _addComments.default)(node, type, [{
@@ -12690,12 +16383,12 @@ var require_addComment = __commonJS({
 
 // node_modules/@babel/types/lib/utils/inherit.js
 var require_inherit = __commonJS({
-  "node_modules/@babel/types/lib/utils/inherit.js"(exports) {
+  "node_modules/@babel/types/lib/utils/inherit.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = inherit;
+    exports2.default = inherit;
     function inherit(key, child, parent) {
       if (child && parent) {
         child[key] = Array.from(new Set([].concat(child[key], parent[key]).filter(Boolean)));
@@ -12706,12 +16399,12 @@ var require_inherit = __commonJS({
 
 // node_modules/@babel/types/lib/comments/inheritInnerComments.js
 var require_inheritInnerComments = __commonJS({
-  "node_modules/@babel/types/lib/comments/inheritInnerComments.js"(exports) {
+  "node_modules/@babel/types/lib/comments/inheritInnerComments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = inheritInnerComments;
+    exports2.default = inheritInnerComments;
     var _inherit = require_inherit();
     function inheritInnerComments(child, parent) {
       (0, _inherit.default)("innerComments", child, parent);
@@ -12721,12 +16414,12 @@ var require_inheritInnerComments = __commonJS({
 
 // node_modules/@babel/types/lib/comments/inheritLeadingComments.js
 var require_inheritLeadingComments = __commonJS({
-  "node_modules/@babel/types/lib/comments/inheritLeadingComments.js"(exports) {
+  "node_modules/@babel/types/lib/comments/inheritLeadingComments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = inheritLeadingComments;
+    exports2.default = inheritLeadingComments;
     var _inherit = require_inherit();
     function inheritLeadingComments(child, parent) {
       (0, _inherit.default)("leadingComments", child, parent);
@@ -12736,12 +16429,12 @@ var require_inheritLeadingComments = __commonJS({
 
 // node_modules/@babel/types/lib/comments/inheritTrailingComments.js
 var require_inheritTrailingComments = __commonJS({
-  "node_modules/@babel/types/lib/comments/inheritTrailingComments.js"(exports) {
+  "node_modules/@babel/types/lib/comments/inheritTrailingComments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = inheritTrailingComments;
+    exports2.default = inheritTrailingComments;
     var _inherit = require_inherit();
     function inheritTrailingComments(child, parent) {
       (0, _inherit.default)("trailingComments", child, parent);
@@ -12751,12 +16444,12 @@ var require_inheritTrailingComments = __commonJS({
 
 // node_modules/@babel/types/lib/comments/inheritsComments.js
 var require_inheritsComments = __commonJS({
-  "node_modules/@babel/types/lib/comments/inheritsComments.js"(exports) {
+  "node_modules/@babel/types/lib/comments/inheritsComments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = inheritsComments;
+    exports2.default = inheritsComments;
     var _inheritTrailingComments = require_inheritTrailingComments();
     var _inheritLeadingComments = require_inheritLeadingComments();
     var _inheritInnerComments = require_inheritInnerComments();
@@ -12771,13 +16464,13 @@ var require_inheritsComments = __commonJS({
 
 // node_modules/@babel/types/lib/comments/removeComments.js
 var require_removeComments = __commonJS({
-  "node_modules/@babel/types/lib/comments/removeComments.js"(exports) {
+  "node_modules/@babel/types/lib/comments/removeComments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = removeComments;
-    var _index = require_constants();
+    exports2.default = removeComments;
+    var _index = require_constants2();
     function removeComments(node) {
       _index.COMMENT_KEYS.forEach((key) => {
         node[key] = null;
@@ -12789,74 +16482,74 @@ var require_removeComments = __commonJS({
 
 // node_modules/@babel/types/lib/constants/generated/index.js
 var require_generated4 = __commonJS({
-  "node_modules/@babel/types/lib/constants/generated/index.js"(exports) {
+  "node_modules/@babel/types/lib/constants/generated/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.WHILE_TYPES = exports.USERWHITESPACABLE_TYPES = exports.UNARYLIKE_TYPES = exports.TYPESCRIPT_TYPES = exports.TSTYPE_TYPES = exports.TSTYPEELEMENT_TYPES = exports.TSENTITYNAME_TYPES = exports.TSBASETYPE_TYPES = exports.TERMINATORLESS_TYPES = exports.STATEMENT_TYPES = exports.STANDARDIZED_TYPES = exports.SCOPABLE_TYPES = exports.PUREISH_TYPES = exports.PROPERTY_TYPES = exports.PRIVATE_TYPES = exports.PATTERN_TYPES = exports.PATTERNLIKE_TYPES = exports.OBJECTMEMBER_TYPES = exports.MODULESPECIFIER_TYPES = exports.MODULEDECLARATION_TYPES = exports.MISCELLANEOUS_TYPES = exports.METHOD_TYPES = exports.LVAL_TYPES = exports.LOOP_TYPES = exports.LITERAL_TYPES = exports.JSX_TYPES = exports.IMPORTOREXPORTDECLARATION_TYPES = exports.IMMUTABLE_TYPES = exports.FUNCTION_TYPES = exports.FUNCTIONPARENT_TYPES = exports.FOR_TYPES = exports.FORXSTATEMENT_TYPES = exports.FLOW_TYPES = exports.FLOWTYPE_TYPES = exports.FLOWPREDICATE_TYPES = exports.FLOWDECLARATION_TYPES = exports.FLOWBASEANNOTATION_TYPES = exports.EXPRESSION_TYPES = exports.EXPRESSIONWRAPPER_TYPES = exports.EXPORTDECLARATION_TYPES = exports.ENUMMEMBER_TYPES = exports.ENUMBODY_TYPES = exports.DECLARATION_TYPES = exports.CONDITIONAL_TYPES = exports.COMPLETIONSTATEMENT_TYPES = exports.CLASS_TYPES = exports.BLOCK_TYPES = exports.BLOCKPARENT_TYPES = exports.BINARY_TYPES = exports.ACCESSOR_TYPES = void 0;
+    exports2.WHILE_TYPES = exports2.USERWHITESPACABLE_TYPES = exports2.UNARYLIKE_TYPES = exports2.TYPESCRIPT_TYPES = exports2.TSTYPE_TYPES = exports2.TSTYPEELEMENT_TYPES = exports2.TSENTITYNAME_TYPES = exports2.TSBASETYPE_TYPES = exports2.TERMINATORLESS_TYPES = exports2.STATEMENT_TYPES = exports2.STANDARDIZED_TYPES = exports2.SCOPABLE_TYPES = exports2.PUREISH_TYPES = exports2.PROPERTY_TYPES = exports2.PRIVATE_TYPES = exports2.PATTERN_TYPES = exports2.PATTERNLIKE_TYPES = exports2.OBJECTMEMBER_TYPES = exports2.MODULESPECIFIER_TYPES = exports2.MODULEDECLARATION_TYPES = exports2.MISCELLANEOUS_TYPES = exports2.METHOD_TYPES = exports2.LVAL_TYPES = exports2.LOOP_TYPES = exports2.LITERAL_TYPES = exports2.JSX_TYPES = exports2.IMPORTOREXPORTDECLARATION_TYPES = exports2.IMMUTABLE_TYPES = exports2.FUNCTION_TYPES = exports2.FUNCTIONPARENT_TYPES = exports2.FOR_TYPES = exports2.FORXSTATEMENT_TYPES = exports2.FLOW_TYPES = exports2.FLOWTYPE_TYPES = exports2.FLOWPREDICATE_TYPES = exports2.FLOWDECLARATION_TYPES = exports2.FLOWBASEANNOTATION_TYPES = exports2.EXPRESSION_TYPES = exports2.EXPRESSIONWRAPPER_TYPES = exports2.EXPORTDECLARATION_TYPES = exports2.ENUMMEMBER_TYPES = exports2.ENUMBODY_TYPES = exports2.DECLARATION_TYPES = exports2.CONDITIONAL_TYPES = exports2.COMPLETIONSTATEMENT_TYPES = exports2.CLASS_TYPES = exports2.BLOCK_TYPES = exports2.BLOCKPARENT_TYPES = exports2.BINARY_TYPES = exports2.ACCESSOR_TYPES = void 0;
     var _index = require_definitions();
-    var STANDARDIZED_TYPES = exports.STANDARDIZED_TYPES = _index.FLIPPED_ALIAS_KEYS["Standardized"];
-    var EXPRESSION_TYPES = exports.EXPRESSION_TYPES = _index.FLIPPED_ALIAS_KEYS["Expression"];
-    var BINARY_TYPES = exports.BINARY_TYPES = _index.FLIPPED_ALIAS_KEYS["Binary"];
-    var SCOPABLE_TYPES = exports.SCOPABLE_TYPES = _index.FLIPPED_ALIAS_KEYS["Scopable"];
-    var BLOCKPARENT_TYPES = exports.BLOCKPARENT_TYPES = _index.FLIPPED_ALIAS_KEYS["BlockParent"];
-    var BLOCK_TYPES = exports.BLOCK_TYPES = _index.FLIPPED_ALIAS_KEYS["Block"];
-    var STATEMENT_TYPES = exports.STATEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["Statement"];
-    var TERMINATORLESS_TYPES = exports.TERMINATORLESS_TYPES = _index.FLIPPED_ALIAS_KEYS["Terminatorless"];
-    var COMPLETIONSTATEMENT_TYPES = exports.COMPLETIONSTATEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["CompletionStatement"];
-    var CONDITIONAL_TYPES = exports.CONDITIONAL_TYPES = _index.FLIPPED_ALIAS_KEYS["Conditional"];
-    var LOOP_TYPES = exports.LOOP_TYPES = _index.FLIPPED_ALIAS_KEYS["Loop"];
-    var WHILE_TYPES = exports.WHILE_TYPES = _index.FLIPPED_ALIAS_KEYS["While"];
-    var EXPRESSIONWRAPPER_TYPES = exports.EXPRESSIONWRAPPER_TYPES = _index.FLIPPED_ALIAS_KEYS["ExpressionWrapper"];
-    var FOR_TYPES = exports.FOR_TYPES = _index.FLIPPED_ALIAS_KEYS["For"];
-    var FORXSTATEMENT_TYPES = exports.FORXSTATEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["ForXStatement"];
-    var FUNCTION_TYPES = exports.FUNCTION_TYPES = _index.FLIPPED_ALIAS_KEYS["Function"];
-    var FUNCTIONPARENT_TYPES = exports.FUNCTIONPARENT_TYPES = _index.FLIPPED_ALIAS_KEYS["FunctionParent"];
-    var PUREISH_TYPES = exports.PUREISH_TYPES = _index.FLIPPED_ALIAS_KEYS["Pureish"];
-    var DECLARATION_TYPES = exports.DECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["Declaration"];
-    var PATTERNLIKE_TYPES = exports.PATTERNLIKE_TYPES = _index.FLIPPED_ALIAS_KEYS["PatternLike"];
-    var LVAL_TYPES = exports.LVAL_TYPES = _index.FLIPPED_ALIAS_KEYS["LVal"];
-    var TSENTITYNAME_TYPES = exports.TSENTITYNAME_TYPES = _index.FLIPPED_ALIAS_KEYS["TSEntityName"];
-    var LITERAL_TYPES = exports.LITERAL_TYPES = _index.FLIPPED_ALIAS_KEYS["Literal"];
-    var IMMUTABLE_TYPES = exports.IMMUTABLE_TYPES = _index.FLIPPED_ALIAS_KEYS["Immutable"];
-    var USERWHITESPACABLE_TYPES = exports.USERWHITESPACABLE_TYPES = _index.FLIPPED_ALIAS_KEYS["UserWhitespacable"];
-    var METHOD_TYPES = exports.METHOD_TYPES = _index.FLIPPED_ALIAS_KEYS["Method"];
-    var OBJECTMEMBER_TYPES = exports.OBJECTMEMBER_TYPES = _index.FLIPPED_ALIAS_KEYS["ObjectMember"];
-    var PROPERTY_TYPES = exports.PROPERTY_TYPES = _index.FLIPPED_ALIAS_KEYS["Property"];
-    var UNARYLIKE_TYPES = exports.UNARYLIKE_TYPES = _index.FLIPPED_ALIAS_KEYS["UnaryLike"];
-    var PATTERN_TYPES = exports.PATTERN_TYPES = _index.FLIPPED_ALIAS_KEYS["Pattern"];
-    var CLASS_TYPES = exports.CLASS_TYPES = _index.FLIPPED_ALIAS_KEYS["Class"];
-    var IMPORTOREXPORTDECLARATION_TYPES = exports.IMPORTOREXPORTDECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["ImportOrExportDeclaration"];
-    var EXPORTDECLARATION_TYPES = exports.EXPORTDECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["ExportDeclaration"];
-    var MODULESPECIFIER_TYPES = exports.MODULESPECIFIER_TYPES = _index.FLIPPED_ALIAS_KEYS["ModuleSpecifier"];
-    var ACCESSOR_TYPES = exports.ACCESSOR_TYPES = _index.FLIPPED_ALIAS_KEYS["Accessor"];
-    var PRIVATE_TYPES = exports.PRIVATE_TYPES = _index.FLIPPED_ALIAS_KEYS["Private"];
-    var FLOW_TYPES = exports.FLOW_TYPES = _index.FLIPPED_ALIAS_KEYS["Flow"];
-    var FLOWTYPE_TYPES = exports.FLOWTYPE_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowType"];
-    var FLOWBASEANNOTATION_TYPES = exports.FLOWBASEANNOTATION_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowBaseAnnotation"];
-    var FLOWDECLARATION_TYPES = exports.FLOWDECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowDeclaration"];
-    var FLOWPREDICATE_TYPES = exports.FLOWPREDICATE_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowPredicate"];
-    var ENUMBODY_TYPES = exports.ENUMBODY_TYPES = _index.FLIPPED_ALIAS_KEYS["EnumBody"];
-    var ENUMMEMBER_TYPES = exports.ENUMMEMBER_TYPES = _index.FLIPPED_ALIAS_KEYS["EnumMember"];
-    var JSX_TYPES = exports.JSX_TYPES = _index.FLIPPED_ALIAS_KEYS["JSX"];
-    var MISCELLANEOUS_TYPES = exports.MISCELLANEOUS_TYPES = _index.FLIPPED_ALIAS_KEYS["Miscellaneous"];
-    var TYPESCRIPT_TYPES = exports.TYPESCRIPT_TYPES = _index.FLIPPED_ALIAS_KEYS["TypeScript"];
-    var TSTYPEELEMENT_TYPES = exports.TSTYPEELEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["TSTypeElement"];
-    var TSTYPE_TYPES = exports.TSTYPE_TYPES = _index.FLIPPED_ALIAS_KEYS["TSType"];
-    var TSBASETYPE_TYPES = exports.TSBASETYPE_TYPES = _index.FLIPPED_ALIAS_KEYS["TSBaseType"];
-    var MODULEDECLARATION_TYPES = exports.MODULEDECLARATION_TYPES = IMPORTOREXPORTDECLARATION_TYPES;
+    var STANDARDIZED_TYPES = exports2.STANDARDIZED_TYPES = _index.FLIPPED_ALIAS_KEYS["Standardized"];
+    var EXPRESSION_TYPES = exports2.EXPRESSION_TYPES = _index.FLIPPED_ALIAS_KEYS["Expression"];
+    var BINARY_TYPES = exports2.BINARY_TYPES = _index.FLIPPED_ALIAS_KEYS["Binary"];
+    var SCOPABLE_TYPES = exports2.SCOPABLE_TYPES = _index.FLIPPED_ALIAS_KEYS["Scopable"];
+    var BLOCKPARENT_TYPES = exports2.BLOCKPARENT_TYPES = _index.FLIPPED_ALIAS_KEYS["BlockParent"];
+    var BLOCK_TYPES = exports2.BLOCK_TYPES = _index.FLIPPED_ALIAS_KEYS["Block"];
+    var STATEMENT_TYPES = exports2.STATEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["Statement"];
+    var TERMINATORLESS_TYPES = exports2.TERMINATORLESS_TYPES = _index.FLIPPED_ALIAS_KEYS["Terminatorless"];
+    var COMPLETIONSTATEMENT_TYPES = exports2.COMPLETIONSTATEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["CompletionStatement"];
+    var CONDITIONAL_TYPES = exports2.CONDITIONAL_TYPES = _index.FLIPPED_ALIAS_KEYS["Conditional"];
+    var LOOP_TYPES = exports2.LOOP_TYPES = _index.FLIPPED_ALIAS_KEYS["Loop"];
+    var WHILE_TYPES = exports2.WHILE_TYPES = _index.FLIPPED_ALIAS_KEYS["While"];
+    var EXPRESSIONWRAPPER_TYPES = exports2.EXPRESSIONWRAPPER_TYPES = _index.FLIPPED_ALIAS_KEYS["ExpressionWrapper"];
+    var FOR_TYPES = exports2.FOR_TYPES = _index.FLIPPED_ALIAS_KEYS["For"];
+    var FORXSTATEMENT_TYPES = exports2.FORXSTATEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["ForXStatement"];
+    var FUNCTION_TYPES = exports2.FUNCTION_TYPES = _index.FLIPPED_ALIAS_KEYS["Function"];
+    var FUNCTIONPARENT_TYPES = exports2.FUNCTIONPARENT_TYPES = _index.FLIPPED_ALIAS_KEYS["FunctionParent"];
+    var PUREISH_TYPES = exports2.PUREISH_TYPES = _index.FLIPPED_ALIAS_KEYS["Pureish"];
+    var DECLARATION_TYPES = exports2.DECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["Declaration"];
+    var PATTERNLIKE_TYPES = exports2.PATTERNLIKE_TYPES = _index.FLIPPED_ALIAS_KEYS["PatternLike"];
+    var LVAL_TYPES = exports2.LVAL_TYPES = _index.FLIPPED_ALIAS_KEYS["LVal"];
+    var TSENTITYNAME_TYPES = exports2.TSENTITYNAME_TYPES = _index.FLIPPED_ALIAS_KEYS["TSEntityName"];
+    var LITERAL_TYPES = exports2.LITERAL_TYPES = _index.FLIPPED_ALIAS_KEYS["Literal"];
+    var IMMUTABLE_TYPES = exports2.IMMUTABLE_TYPES = _index.FLIPPED_ALIAS_KEYS["Immutable"];
+    var USERWHITESPACABLE_TYPES = exports2.USERWHITESPACABLE_TYPES = _index.FLIPPED_ALIAS_KEYS["UserWhitespacable"];
+    var METHOD_TYPES = exports2.METHOD_TYPES = _index.FLIPPED_ALIAS_KEYS["Method"];
+    var OBJECTMEMBER_TYPES = exports2.OBJECTMEMBER_TYPES = _index.FLIPPED_ALIAS_KEYS["ObjectMember"];
+    var PROPERTY_TYPES = exports2.PROPERTY_TYPES = _index.FLIPPED_ALIAS_KEYS["Property"];
+    var UNARYLIKE_TYPES = exports2.UNARYLIKE_TYPES = _index.FLIPPED_ALIAS_KEYS["UnaryLike"];
+    var PATTERN_TYPES = exports2.PATTERN_TYPES = _index.FLIPPED_ALIAS_KEYS["Pattern"];
+    var CLASS_TYPES = exports2.CLASS_TYPES = _index.FLIPPED_ALIAS_KEYS["Class"];
+    var IMPORTOREXPORTDECLARATION_TYPES = exports2.IMPORTOREXPORTDECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["ImportOrExportDeclaration"];
+    var EXPORTDECLARATION_TYPES = exports2.EXPORTDECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["ExportDeclaration"];
+    var MODULESPECIFIER_TYPES = exports2.MODULESPECIFIER_TYPES = _index.FLIPPED_ALIAS_KEYS["ModuleSpecifier"];
+    var ACCESSOR_TYPES = exports2.ACCESSOR_TYPES = _index.FLIPPED_ALIAS_KEYS["Accessor"];
+    var PRIVATE_TYPES = exports2.PRIVATE_TYPES = _index.FLIPPED_ALIAS_KEYS["Private"];
+    var FLOW_TYPES = exports2.FLOW_TYPES = _index.FLIPPED_ALIAS_KEYS["Flow"];
+    var FLOWTYPE_TYPES = exports2.FLOWTYPE_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowType"];
+    var FLOWBASEANNOTATION_TYPES = exports2.FLOWBASEANNOTATION_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowBaseAnnotation"];
+    var FLOWDECLARATION_TYPES = exports2.FLOWDECLARATION_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowDeclaration"];
+    var FLOWPREDICATE_TYPES = exports2.FLOWPREDICATE_TYPES = _index.FLIPPED_ALIAS_KEYS["FlowPredicate"];
+    var ENUMBODY_TYPES = exports2.ENUMBODY_TYPES = _index.FLIPPED_ALIAS_KEYS["EnumBody"];
+    var ENUMMEMBER_TYPES = exports2.ENUMMEMBER_TYPES = _index.FLIPPED_ALIAS_KEYS["EnumMember"];
+    var JSX_TYPES = exports2.JSX_TYPES = _index.FLIPPED_ALIAS_KEYS["JSX"];
+    var MISCELLANEOUS_TYPES = exports2.MISCELLANEOUS_TYPES = _index.FLIPPED_ALIAS_KEYS["Miscellaneous"];
+    var TYPESCRIPT_TYPES = exports2.TYPESCRIPT_TYPES = _index.FLIPPED_ALIAS_KEYS["TypeScript"];
+    var TSTYPEELEMENT_TYPES = exports2.TSTYPEELEMENT_TYPES = _index.FLIPPED_ALIAS_KEYS["TSTypeElement"];
+    var TSTYPE_TYPES = exports2.TSTYPE_TYPES = _index.FLIPPED_ALIAS_KEYS["TSType"];
+    var TSBASETYPE_TYPES = exports2.TSBASETYPE_TYPES = _index.FLIPPED_ALIAS_KEYS["TSBaseType"];
+    var MODULEDECLARATION_TYPES = exports2.MODULEDECLARATION_TYPES = IMPORTOREXPORTDECLARATION_TYPES;
   }
 });
 
 // node_modules/@babel/types/lib/converters/toBlock.js
 var require_toBlock = __commonJS({
-  "node_modules/@babel/types/lib/converters/toBlock.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toBlock.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = toBlock;
+    exports2.default = toBlock;
     var _index = require_generated();
     var _index2 = require_generated2();
     function toBlock(node, parent) {
@@ -12883,12 +16576,12 @@ var require_toBlock = __commonJS({
 
 // node_modules/@babel/types/lib/converters/ensureBlock.js
 var require_ensureBlock = __commonJS({
-  "node_modules/@babel/types/lib/converters/ensureBlock.js"(exports) {
+  "node_modules/@babel/types/lib/converters/ensureBlock.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = ensureBlock;
+    exports2.default = ensureBlock;
     var _toBlock = require_toBlock();
     function ensureBlock(node, key = "body") {
       const result = (0, _toBlock.default)(node[key], node);
@@ -12900,12 +16593,12 @@ var require_ensureBlock = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toIdentifier.js
 var require_toIdentifier = __commonJS({
-  "node_modules/@babel/types/lib/converters/toIdentifier.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toIdentifier.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = toIdentifier;
+    exports2.default = toIdentifier;
     var _isValidIdentifier = require_isValidIdentifier();
     var _helperValidatorIdentifier = require_lib();
     function toIdentifier(input) {
@@ -12928,12 +16621,12 @@ var require_toIdentifier = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toBindingIdentifierName.js
 var require_toBindingIdentifierName = __commonJS({
-  "node_modules/@babel/types/lib/converters/toBindingIdentifierName.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toBindingIdentifierName.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = toBindingIdentifierName;
+    exports2.default = toBindingIdentifierName;
     var _toIdentifier = require_toIdentifier();
     function toBindingIdentifierName(name) {
       name = (0, _toIdentifier.default)(name);
@@ -12946,12 +16639,12 @@ var require_toBindingIdentifierName = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toComputedKey.js
 var require_toComputedKey = __commonJS({
-  "node_modules/@babel/types/lib/converters/toComputedKey.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toComputedKey.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = toComputedKey;
+    exports2.default = toComputedKey;
     var _index = require_generated();
     var _index2 = require_generated2();
     function toComputedKey(node, key = node.key || node.property) {
@@ -12964,14 +16657,14 @@ var require_toComputedKey = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toExpression.js
 var require_toExpression = __commonJS({
-  "node_modules/@babel/types/lib/converters/toExpression.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toExpression.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _index = require_generated();
-    var _default3 = exports.default = toExpression;
+    var _default3 = exports2.default = toExpression;
     function toExpression(node) {
       if ((0, _index.isExpressionStatement)(node)) {
         node = node.expression;
@@ -12994,12 +16687,12 @@ var require_toExpression = __commonJS({
 
 // node_modules/@babel/types/lib/traverse/traverseFast.js
 var require_traverseFast = __commonJS({
-  "node_modules/@babel/types/lib/traverse/traverseFast.js"(exports) {
+  "node_modules/@babel/types/lib/traverse/traverseFast.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = traverseFast;
+    exports2.default = traverseFast;
     var _index = require_definitions();
     var _skip = Symbol();
     var _stop = Symbol();
@@ -13042,13 +16735,13 @@ var require_traverseFast = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/removeProperties.js
 var require_removeProperties = __commonJS({
-  "node_modules/@babel/types/lib/modifications/removeProperties.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/removeProperties.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = removeProperties;
-    var _index = require_constants();
+    exports2.default = removeProperties;
+    var _index = require_constants2();
     var CLEAR_KEYS = ["tokens", "start", "end", "loc", "raw", "rawValue"];
     var CLEAR_KEYS_PLUS_COMMENTS = [..._index.COMMENT_KEYS, "comments", ...CLEAR_KEYS];
     function removeProperties(node, opts = {}) {
@@ -13071,12 +16764,12 @@ var require_removeProperties = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/removePropertiesDeep.js
 var require_removePropertiesDeep = __commonJS({
-  "node_modules/@babel/types/lib/modifications/removePropertiesDeep.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/removePropertiesDeep.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = removePropertiesDeep;
+    exports2.default = removePropertiesDeep;
     var _traverseFast = require_traverseFast();
     var _removeProperties = require_removeProperties();
     function removePropertiesDeep(tree, opts) {
@@ -13088,12 +16781,12 @@ var require_removePropertiesDeep = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toKeyAlias.js
 var require_toKeyAlias = __commonJS({
-  "node_modules/@babel/types/lib/converters/toKeyAlias.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toKeyAlias.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = toKeyAlias;
+    exports2.default = toKeyAlias;
     var _index = require_generated();
     var _cloneNode = require_cloneNode();
     var _removePropertiesDeep = require_removePropertiesDeep();
@@ -13129,15 +16822,15 @@ var require_toKeyAlias = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toStatement.js
 var require_toStatement = __commonJS({
-  "node_modules/@babel/types/lib/converters/toStatement.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toStatement.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _index = require_generated();
     var _index2 = require_generated2();
-    var _default3 = exports.default = toStatement;
+    var _default3 = exports2.default = toStatement;
     function toStatement(node, ignore) {
       if ((0, _index.isStatement)(node)) {
         return node;
@@ -13171,15 +16864,15 @@ var require_toStatement = __commonJS({
 
 // node_modules/@babel/types/lib/converters/valueToNode.js
 var require_valueToNode = __commonJS({
-  "node_modules/@babel/types/lib/converters/valueToNode.js"(exports) {
+  "node_modules/@babel/types/lib/converters/valueToNode.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _isValidIdentifier = require_isValidIdentifier();
     var _index = require_generated2();
-    var _default3 = exports.default = valueToNode;
+    var _default3 = exports2.default = valueToNode;
     var objectToString = Function.call.bind(Object.prototype.toString);
     function isRegExp(value2) {
       return objectToString(value2) === "[object RegExp]";
@@ -13258,12 +16951,12 @@ var require_valueToNode = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/appendToMemberExpression.js
 var require_appendToMemberExpression = __commonJS({
-  "node_modules/@babel/types/lib/modifications/appendToMemberExpression.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/appendToMemberExpression.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = appendToMemberExpression;
+    exports2.default = appendToMemberExpression;
     var _index = require_generated2();
     function appendToMemberExpression(member, append, computed = false) {
       member.object = (0, _index.memberExpression)(member.object, member.property, member.computed);
@@ -13276,13 +16969,13 @@ var require_appendToMemberExpression = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/inherits.js
 var require_inherits = __commonJS({
-  "node_modules/@babel/types/lib/modifications/inherits.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/inherits.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = inherits;
-    var _index = require_constants();
+    exports2.default = inherits;
+    var _index = require_constants2();
     var _inheritsComments = require_inheritsComments();
     function inherits(child, parent) {
       if (!child || !parent)
@@ -13308,12 +17001,12 @@ var require_inherits = __commonJS({
 
 // node_modules/@babel/types/lib/modifications/prependToMemberExpression.js
 var require_prependToMemberExpression = __commonJS({
-  "node_modules/@babel/types/lib/modifications/prependToMemberExpression.js"(exports) {
+  "node_modules/@babel/types/lib/modifications/prependToMemberExpression.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = prependToMemberExpression;
+    exports2.default = prependToMemberExpression;
     var _index = require_generated2();
     var _index2 = require_lib3();
     function prependToMemberExpression(member, prepend) {
@@ -13328,12 +17021,12 @@ var require_prependToMemberExpression = __commonJS({
 
 // node_modules/@babel/types/lib/retrievers/getAssignmentIdentifiers.js
 var require_getAssignmentIdentifiers = __commonJS({
-  "node_modules/@babel/types/lib/retrievers/getAssignmentIdentifiers.js"(exports) {
+  "node_modules/@babel/types/lib/retrievers/getAssignmentIdentifiers.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = getAssignmentIdentifiers;
+    exports2.default = getAssignmentIdentifiers;
     function getAssignmentIdentifiers(node) {
       const search = [].concat(node);
       const ids = /* @__PURE__ */ Object.create(null);
@@ -13380,12 +17073,12 @@ var require_getAssignmentIdentifiers = __commonJS({
 
 // node_modules/@babel/types/lib/retrievers/getBindingIdentifiers.js
 var require_getBindingIdentifiers = __commonJS({
-  "node_modules/@babel/types/lib/retrievers/getBindingIdentifiers.js"(exports) {
+  "node_modules/@babel/types/lib/retrievers/getBindingIdentifiers.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = getBindingIdentifiers;
+    exports2.default = getBindingIdentifiers;
     var _index = require_generated();
     function getBindingIdentifiers(node, duplicates, outerOnly, newBindingsOnly) {
       const search = [].concat(node);
@@ -13486,14 +17179,14 @@ var require_getBindingIdentifiers = __commonJS({
 
 // node_modules/@babel/types/lib/retrievers/getOuterBindingIdentifiers.js
 var require_getOuterBindingIdentifiers = __commonJS({
-  "node_modules/@babel/types/lib/retrievers/getOuterBindingIdentifiers.js"(exports) {
+  "node_modules/@babel/types/lib/retrievers/getOuterBindingIdentifiers.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _getBindingIdentifiers = require_getBindingIdentifiers();
-    var _default3 = exports.default = getOuterBindingIdentifiers;
+    var _default3 = exports2.default = getOuterBindingIdentifiers;
     function getOuterBindingIdentifiers(node, duplicates) {
       return (0, _getBindingIdentifiers.default)(node, duplicates, true);
     }
@@ -13502,12 +17195,12 @@ var require_getOuterBindingIdentifiers = __commonJS({
 
 // node_modules/@babel/types/lib/retrievers/getFunctionName.js
 var require_getFunctionName = __commonJS({
-  "node_modules/@babel/types/lib/retrievers/getFunctionName.js"(exports) {
+  "node_modules/@babel/types/lib/retrievers/getFunctionName.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = getFunctionName;
+    exports2.default = getFunctionName;
     var _index = require_generated();
     function getNameFromLiteralId(id) {
       if ((0, _index.isNullLiteral)(id)) {
@@ -13573,12 +17266,12 @@ var require_getFunctionName = __commonJS({
 
 // node_modules/@babel/types/lib/traverse/traverse.js
 var require_traverse = __commonJS({
-  "node_modules/@babel/types/lib/traverse/traverse.js"(exports) {
+  "node_modules/@babel/types/lib/traverse/traverse.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = traverse;
+    exports2.default = traverse;
     var _index = require_definitions();
     function traverse(node, handlers, state) {
       if (typeof handlers === "function") {
@@ -13630,12 +17323,12 @@ var require_traverse = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isBinding.js
 var require_isBinding = __commonJS({
-  "node_modules/@babel/types/lib/validators/isBinding.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isBinding.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isBinding;
+    exports2.default = isBinding;
     var _getBindingIdentifiers = require_getBindingIdentifiers();
     function isBinding(node, parent, grandparent) {
       if (grandparent && node.type === "Identifier" && parent.type === "ObjectProperty" && grandparent.type === "ObjectExpression") {
@@ -13662,12 +17355,12 @@ var require_isBinding = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isLet.js
 var require_isLet = __commonJS({
-  "node_modules/@babel/types/lib/validators/isLet.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isLet.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isLet;
+    exports2.default = isLet;
     var _index = require_generated();
     {
       BLOCK_SCOPED_SYMBOL = Symbol.for("var used to be block scoped");
@@ -13683,12 +17376,12 @@ var require_isLet = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isBlockScoped.js
 var require_isBlockScoped = __commonJS({
-  "node_modules/@babel/types/lib/validators/isBlockScoped.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isBlockScoped.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isBlockScoped;
+    exports2.default = isBlockScoped;
     var _index = require_generated();
     var _isLet = require_isLet();
     function isBlockScoped(node) {
@@ -13699,12 +17392,12 @@ var require_isBlockScoped = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isImmutable.js
 var require_isImmutable = __commonJS({
-  "node_modules/@babel/types/lib/validators/isImmutable.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isImmutable.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isImmutable;
+    exports2.default = isImmutable;
     var _isType = require_isType();
     var _index = require_generated();
     function isImmutable(node) {
@@ -13724,12 +17417,12 @@ var require_isImmutable = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isNodesEquivalent.js
 var require_isNodesEquivalent = __commonJS({
-  "node_modules/@babel/types/lib/validators/isNodesEquivalent.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isNodesEquivalent.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isNodesEquivalent;
+    exports2.default = isNodesEquivalent;
     var _index = require_definitions();
     function isNodesEquivalent(a, b) {
       if (typeof a !== "object" || typeof b !== "object" || a == null || b == null) {
@@ -13784,12 +17477,12 @@ var require_isNodesEquivalent = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isReferenced.js
 var require_isReferenced = __commonJS({
-  "node_modules/@babel/types/lib/validators/isReferenced.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isReferenced.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isReferenced;
+    exports2.default = isReferenced;
     function isReferenced(node, parent, grandparent) {
       switch (parent.type) {
         case "MemberExpression":
@@ -13883,12 +17576,12 @@ var require_isReferenced = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isScope.js
 var require_isScope = __commonJS({
-  "node_modules/@babel/types/lib/validators/isScope.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isScope.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isScope;
+    exports2.default = isScope;
     var _index = require_generated();
     function isScope(node, parent) {
       if ((0, _index.isBlockStatement)(node) && ((0, _index.isFunction)(parent) || (0, _index.isCatchClause)(parent))) {
@@ -13904,12 +17597,12 @@ var require_isScope = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isSpecifierDefault.js
 var require_isSpecifierDefault = __commonJS({
-  "node_modules/@babel/types/lib/validators/isSpecifierDefault.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isSpecifierDefault.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isSpecifierDefault;
+    exports2.default = isSpecifierDefault;
     var _index = require_generated();
     function isSpecifierDefault(specifier) {
       return (0, _index.isImportDefaultSpecifier)(specifier) || (0, _index.isIdentifier)(specifier.imported || specifier.exported, {
@@ -13921,12 +17614,12 @@ var require_isSpecifierDefault = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isValidES3Identifier.js
 var require_isValidES3Identifier = __commonJS({
-  "node_modules/@babel/types/lib/validators/isValidES3Identifier.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isValidES3Identifier.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isValidES3Identifier;
+    exports2.default = isValidES3Identifier;
     var _isValidIdentifier = require_isValidIdentifier();
     var RESERVED_WORDS_ES3_ONLY = /* @__PURE__ */ new Set(["abstract", "boolean", "byte", "char", "double", "enum", "final", "float", "goto", "implements", "int", "interface", "long", "native", "package", "private", "protected", "public", "short", "static", "synchronized", "throws", "transient", "volatile"]);
     function isValidES3Identifier(name) {
@@ -13937,12 +17630,12 @@ var require_isValidES3Identifier = __commonJS({
 
 // node_modules/@babel/types/lib/validators/isVar.js
 var require_isVar = __commonJS({
-  "node_modules/@babel/types/lib/validators/isVar.js"(exports) {
+  "node_modules/@babel/types/lib/validators/isVar.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isVar;
+    exports2.default = isVar;
     var _index = require_generated();
     {
       BLOCK_SCOPED_SYMBOL = Symbol.for("var used to be block scoped");
@@ -13960,12 +17653,12 @@ var require_isVar = __commonJS({
 
 // node_modules/@babel/types/lib/converters/gatherSequenceExpressions.js
 var require_gatherSequenceExpressions = __commonJS({
-  "node_modules/@babel/types/lib/converters/gatherSequenceExpressions.js"(exports) {
+  "node_modules/@babel/types/lib/converters/gatherSequenceExpressions.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = gatherSequenceExpressions;
+    exports2.default = gatherSequenceExpressions;
     var _getBindingIdentifiers = require_getBindingIdentifiers();
     var _index = require_generated();
     var _index2 = require_generated2();
@@ -14031,12 +17724,12 @@ var require_gatherSequenceExpressions = __commonJS({
 
 // node_modules/@babel/types/lib/converters/toSequenceExpression.js
 var require_toSequenceExpression = __commonJS({
-  "node_modules/@babel/types/lib/converters/toSequenceExpression.js"(exports) {
+  "node_modules/@babel/types/lib/converters/toSequenceExpression.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = toSequenceExpression;
+    exports2.default = toSequenceExpression;
     var _gatherSequenceExpressions = require_gatherSequenceExpressions();
     function toSequenceExpression(nodes, scope) {
       if (!(nodes != null && nodes.length))
@@ -14055,9 +17748,9 @@ var require_toSequenceExpression = __commonJS({
 
 // node_modules/@babel/types/lib/index.js
 var require_lib3 = __commonJS({
-  "node_modules/@babel/types/lib/index.js"(exports) {
+  "node_modules/@babel/types/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
     var _exportNames = {
@@ -14121,350 +17814,350 @@ var require_lib3 = __commonJS({
       buildMatchMemberExpression: true,
       __internal__deprecationWarning: true
     };
-    Object.defineProperty(exports, "__internal__deprecationWarning", {
+    Object.defineProperty(exports2, "__internal__deprecationWarning", {
       enumerable: true,
       get: function() {
         return _deprecationWarning.default;
       }
     });
-    Object.defineProperty(exports, "addComment", {
+    Object.defineProperty(exports2, "addComment", {
       enumerable: true,
       get: function() {
         return _addComment.default;
       }
     });
-    Object.defineProperty(exports, "addComments", {
+    Object.defineProperty(exports2, "addComments", {
       enumerable: true,
       get: function() {
         return _addComments.default;
       }
     });
-    Object.defineProperty(exports, "appendToMemberExpression", {
+    Object.defineProperty(exports2, "appendToMemberExpression", {
       enumerable: true,
       get: function() {
         return _appendToMemberExpression.default;
       }
     });
-    Object.defineProperty(exports, "assertNode", {
+    Object.defineProperty(exports2, "assertNode", {
       enumerable: true,
       get: function() {
         return _assertNode.default;
       }
     });
-    Object.defineProperty(exports, "buildMatchMemberExpression", {
+    Object.defineProperty(exports2, "buildMatchMemberExpression", {
       enumerable: true,
       get: function() {
         return _buildMatchMemberExpression.default;
       }
     });
-    Object.defineProperty(exports, "clone", {
+    Object.defineProperty(exports2, "clone", {
       enumerable: true,
       get: function() {
         return _clone.default;
       }
     });
-    Object.defineProperty(exports, "cloneDeep", {
+    Object.defineProperty(exports2, "cloneDeep", {
       enumerable: true,
       get: function() {
         return _cloneDeep.default;
       }
     });
-    Object.defineProperty(exports, "cloneDeepWithoutLoc", {
+    Object.defineProperty(exports2, "cloneDeepWithoutLoc", {
       enumerable: true,
       get: function() {
         return _cloneDeepWithoutLoc.default;
       }
     });
-    Object.defineProperty(exports, "cloneNode", {
+    Object.defineProperty(exports2, "cloneNode", {
       enumerable: true,
       get: function() {
         return _cloneNode.default;
       }
     });
-    Object.defineProperty(exports, "cloneWithoutLoc", {
+    Object.defineProperty(exports2, "cloneWithoutLoc", {
       enumerable: true,
       get: function() {
         return _cloneWithoutLoc.default;
       }
     });
-    Object.defineProperty(exports, "createFlowUnionType", {
+    Object.defineProperty(exports2, "createFlowUnionType", {
       enumerable: true,
       get: function() {
         return _createFlowUnionType.default;
       }
     });
-    Object.defineProperty(exports, "createTSUnionType", {
+    Object.defineProperty(exports2, "createTSUnionType", {
       enumerable: true,
       get: function() {
         return _createTSUnionType.default;
       }
     });
-    Object.defineProperty(exports, "createTypeAnnotationBasedOnTypeof", {
+    Object.defineProperty(exports2, "createTypeAnnotationBasedOnTypeof", {
       enumerable: true,
       get: function() {
         return _createTypeAnnotationBasedOnTypeof.default;
       }
     });
-    Object.defineProperty(exports, "createUnionTypeAnnotation", {
+    Object.defineProperty(exports2, "createUnionTypeAnnotation", {
       enumerable: true,
       get: function() {
         return _createFlowUnionType.default;
       }
     });
-    Object.defineProperty(exports, "ensureBlock", {
+    Object.defineProperty(exports2, "ensureBlock", {
       enumerable: true,
       get: function() {
         return _ensureBlock.default;
       }
     });
-    Object.defineProperty(exports, "getAssignmentIdentifiers", {
+    Object.defineProperty(exports2, "getAssignmentIdentifiers", {
       enumerable: true,
       get: function() {
         return _getAssignmentIdentifiers.default;
       }
     });
-    Object.defineProperty(exports, "getBindingIdentifiers", {
+    Object.defineProperty(exports2, "getBindingIdentifiers", {
       enumerable: true,
       get: function() {
         return _getBindingIdentifiers.default;
       }
     });
-    Object.defineProperty(exports, "getFunctionName", {
+    Object.defineProperty(exports2, "getFunctionName", {
       enumerable: true,
       get: function() {
         return _getFunctionName.default;
       }
     });
-    Object.defineProperty(exports, "getOuterBindingIdentifiers", {
+    Object.defineProperty(exports2, "getOuterBindingIdentifiers", {
       enumerable: true,
       get: function() {
         return _getOuterBindingIdentifiers.default;
       }
     });
-    Object.defineProperty(exports, "inheritInnerComments", {
+    Object.defineProperty(exports2, "inheritInnerComments", {
       enumerable: true,
       get: function() {
         return _inheritInnerComments.default;
       }
     });
-    Object.defineProperty(exports, "inheritLeadingComments", {
+    Object.defineProperty(exports2, "inheritLeadingComments", {
       enumerable: true,
       get: function() {
         return _inheritLeadingComments.default;
       }
     });
-    Object.defineProperty(exports, "inheritTrailingComments", {
+    Object.defineProperty(exports2, "inheritTrailingComments", {
       enumerable: true,
       get: function() {
         return _inheritTrailingComments.default;
       }
     });
-    Object.defineProperty(exports, "inherits", {
+    Object.defineProperty(exports2, "inherits", {
       enumerable: true,
       get: function() {
         return _inherits.default;
       }
     });
-    Object.defineProperty(exports, "inheritsComments", {
+    Object.defineProperty(exports2, "inheritsComments", {
       enumerable: true,
       get: function() {
         return _inheritsComments.default;
       }
     });
-    Object.defineProperty(exports, "is", {
+    Object.defineProperty(exports2, "is", {
       enumerable: true,
       get: function() {
         return _is.default;
       }
     });
-    Object.defineProperty(exports, "isBinding", {
+    Object.defineProperty(exports2, "isBinding", {
       enumerable: true,
       get: function() {
         return _isBinding.default;
       }
     });
-    Object.defineProperty(exports, "isBlockScoped", {
+    Object.defineProperty(exports2, "isBlockScoped", {
       enumerable: true,
       get: function() {
         return _isBlockScoped.default;
       }
     });
-    Object.defineProperty(exports, "isImmutable", {
+    Object.defineProperty(exports2, "isImmutable", {
       enumerable: true,
       get: function() {
         return _isImmutable.default;
       }
     });
-    Object.defineProperty(exports, "isLet", {
+    Object.defineProperty(exports2, "isLet", {
       enumerable: true,
       get: function() {
         return _isLet.default;
       }
     });
-    Object.defineProperty(exports, "isNode", {
+    Object.defineProperty(exports2, "isNode", {
       enumerable: true,
       get: function() {
         return _isNode.default;
       }
     });
-    Object.defineProperty(exports, "isNodesEquivalent", {
+    Object.defineProperty(exports2, "isNodesEquivalent", {
       enumerable: true,
       get: function() {
         return _isNodesEquivalent.default;
       }
     });
-    Object.defineProperty(exports, "isPlaceholderType", {
+    Object.defineProperty(exports2, "isPlaceholderType", {
       enumerable: true,
       get: function() {
         return _isPlaceholderType.default;
       }
     });
-    Object.defineProperty(exports, "isReferenced", {
+    Object.defineProperty(exports2, "isReferenced", {
       enumerable: true,
       get: function() {
         return _isReferenced.default;
       }
     });
-    Object.defineProperty(exports, "isScope", {
+    Object.defineProperty(exports2, "isScope", {
       enumerable: true,
       get: function() {
         return _isScope.default;
       }
     });
-    Object.defineProperty(exports, "isSpecifierDefault", {
+    Object.defineProperty(exports2, "isSpecifierDefault", {
       enumerable: true,
       get: function() {
         return _isSpecifierDefault.default;
       }
     });
-    Object.defineProperty(exports, "isType", {
+    Object.defineProperty(exports2, "isType", {
       enumerable: true,
       get: function() {
         return _isType.default;
       }
     });
-    Object.defineProperty(exports, "isValidES3Identifier", {
+    Object.defineProperty(exports2, "isValidES3Identifier", {
       enumerable: true,
       get: function() {
         return _isValidES3Identifier.default;
       }
     });
-    Object.defineProperty(exports, "isValidIdentifier", {
+    Object.defineProperty(exports2, "isValidIdentifier", {
       enumerable: true,
       get: function() {
         return _isValidIdentifier.default;
       }
     });
-    Object.defineProperty(exports, "isVar", {
+    Object.defineProperty(exports2, "isVar", {
       enumerable: true,
       get: function() {
         return _isVar.default;
       }
     });
-    Object.defineProperty(exports, "matchesPattern", {
+    Object.defineProperty(exports2, "matchesPattern", {
       enumerable: true,
       get: function() {
         return _matchesPattern.default;
       }
     });
-    Object.defineProperty(exports, "prependToMemberExpression", {
+    Object.defineProperty(exports2, "prependToMemberExpression", {
       enumerable: true,
       get: function() {
         return _prependToMemberExpression.default;
       }
     });
-    exports.react = void 0;
-    Object.defineProperty(exports, "removeComments", {
+    exports2.react = void 0;
+    Object.defineProperty(exports2, "removeComments", {
       enumerable: true,
       get: function() {
         return _removeComments.default;
       }
     });
-    Object.defineProperty(exports, "removeProperties", {
+    Object.defineProperty(exports2, "removeProperties", {
       enumerable: true,
       get: function() {
         return _removeProperties.default;
       }
     });
-    Object.defineProperty(exports, "removePropertiesDeep", {
+    Object.defineProperty(exports2, "removePropertiesDeep", {
       enumerable: true,
       get: function() {
         return _removePropertiesDeep.default;
       }
     });
-    Object.defineProperty(exports, "removeTypeDuplicates", {
+    Object.defineProperty(exports2, "removeTypeDuplicates", {
       enumerable: true,
       get: function() {
         return _removeTypeDuplicates.default;
       }
     });
-    Object.defineProperty(exports, "shallowEqual", {
+    Object.defineProperty(exports2, "shallowEqual", {
       enumerable: true,
       get: function() {
         return _shallowEqual.default;
       }
     });
-    Object.defineProperty(exports, "toBindingIdentifierName", {
+    Object.defineProperty(exports2, "toBindingIdentifierName", {
       enumerable: true,
       get: function() {
         return _toBindingIdentifierName.default;
       }
     });
-    Object.defineProperty(exports, "toBlock", {
+    Object.defineProperty(exports2, "toBlock", {
       enumerable: true,
       get: function() {
         return _toBlock.default;
       }
     });
-    Object.defineProperty(exports, "toComputedKey", {
+    Object.defineProperty(exports2, "toComputedKey", {
       enumerable: true,
       get: function() {
         return _toComputedKey.default;
       }
     });
-    Object.defineProperty(exports, "toExpression", {
+    Object.defineProperty(exports2, "toExpression", {
       enumerable: true,
       get: function() {
         return _toExpression.default;
       }
     });
-    Object.defineProperty(exports, "toIdentifier", {
+    Object.defineProperty(exports2, "toIdentifier", {
       enumerable: true,
       get: function() {
         return _toIdentifier.default;
       }
     });
-    Object.defineProperty(exports, "toKeyAlias", {
+    Object.defineProperty(exports2, "toKeyAlias", {
       enumerable: true,
       get: function() {
         return _toKeyAlias.default;
       }
     });
-    Object.defineProperty(exports, "toStatement", {
+    Object.defineProperty(exports2, "toStatement", {
       enumerable: true,
       get: function() {
         return _toStatement.default;
       }
     });
-    Object.defineProperty(exports, "traverse", {
+    Object.defineProperty(exports2, "traverse", {
       enumerable: true,
       get: function() {
         return _traverse.default;
       }
     });
-    Object.defineProperty(exports, "traverseFast", {
+    Object.defineProperty(exports2, "traverseFast", {
       enumerable: true,
       get: function() {
         return _traverseFast.default;
       }
     });
-    Object.defineProperty(exports, "validate", {
+    Object.defineProperty(exports2, "validate", {
       enumerable: true,
       get: function() {
         return _validate.default;
       }
     });
-    Object.defineProperty(exports, "valueToNode", {
+    Object.defineProperty(exports2, "valueToNode", {
       enumerable: true,
       get: function() {
         return _valueToNode.default;
@@ -14480,9 +18173,9 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _index[key])
+      if (key in exports2 && exports2[key] === _index[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _index[key];
@@ -14498,9 +18191,9 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _productions[key])
+      if (key in exports2 && exports2[key] === _productions[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _productions[key];
@@ -14513,9 +18206,9 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _index2[key])
+      if (key in exports2 && exports2[key] === _index2[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _index2[key];
@@ -14540,24 +18233,24 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _index3[key])
+      if (key in exports2 && exports2[key] === _index3[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _index3[key];
         }
       });
     });
-    var _index4 = require_constants();
+    var _index4 = require_constants2();
     Object.keys(_index4).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _index4[key])
+      if (key in exports2 && exports2[key] === _index4[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _index4[key];
@@ -14579,9 +18272,9 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _index5[key])
+      if (key in exports2 && exports2[key] === _index5[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _index5[key];
@@ -14604,9 +18297,9 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _traverse[key])
+      if (key in exports2 && exports2[key] === _traverse[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _traverse[key];
@@ -14639,9 +18332,9 @@ var require_lib3 = __commonJS({
         return;
       if (Object.prototype.hasOwnProperty.call(_exportNames, key))
         return;
-      if (key in exports && exports[key] === _index6[key])
+      if (key in exports2 && exports2[key] === _index6[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _index6[key];
@@ -14650,13 +18343,13 @@ var require_lib3 = __commonJS({
     });
     var _deprecationWarning = require_deprecationWarning();
     var _toSequenceExpression = require_toSequenceExpression();
-    var react = exports.react = {
+    var react = exports2.react = {
       isReactComponent: _isReactComponent.default,
       isCompatTag: _isCompatTag.default,
       buildChildren: _buildChildren.default
     };
     {
-      exports.toSequenceExpression = _toSequenceExpression.default;
+      exports2.toSequenceExpression = _toSequenceExpression.default;
     }
     if (process.env.BABEL_TYPES_8_BREAKING) {
       console.warn("BABEL_TYPES_8_BREAKING is not supported anymore. Use the latest Babel 8.0.0 pre-release instead!");
@@ -14666,12 +18359,12 @@ var require_lib3 = __commonJS({
 
 // node_modules/@babel/template/lib/formatters.js
 var require_formatters = __commonJS({
-  "node_modules/@babel/template/lib/formatters.js"(exports) {
+  "node_modules/@babel/template/lib/formatters.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.statements = exports.statement = exports.smart = exports.program = exports.expression = void 0;
+    exports2.statements = exports2.statement = exports2.smart = exports2.program = exports2.expression = void 0;
     var _t = require_lib3();
     var {
       assertExpressionStatement
@@ -14687,15 +18380,15 @@ ${str}`,
         }
       };
     }
-    var smart = exports.smart = makeStatementFormatter((body) => {
+    var smart = exports2.smart = makeStatementFormatter((body) => {
       if (body.length > 1) {
         return body;
       } else {
         return body[0];
       }
     });
-    var statements = exports.statements = makeStatementFormatter((body) => body);
-    var statement = exports.statement = makeStatementFormatter((body) => {
+    var statements = exports2.statements = makeStatementFormatter((body) => body);
+    var statement = exports2.statement = makeStatementFormatter((body) => {
       if (body.length === 0) {
         throw new Error("Found nothing to return.");
       }
@@ -14704,7 +18397,7 @@ ${str}`,
       }
       return body[0];
     });
-    var expression = exports.expression = {
+    var expression = exports2.expression = {
       code: (str) => `(
 ${str}
 )`,
@@ -14724,7 +18417,7 @@ ${str}
         return stmt.expression;
       }
     };
-    var program = exports.program = {
+    var program = exports2.program = {
       code: (str) => str,
       validate: () => {
       },
@@ -14735,14 +18428,14 @@ ${str}
 
 // node_modules/@babel/template/lib/options.js
 var require_options = __commonJS({
-  "node_modules/@babel/template/lib/options.js"(exports) {
+  "node_modules/@babel/template/lib/options.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.merge = merge2;
-    exports.normalizeReplacements = normalizeReplacements;
-    exports.validate = validate;
+    exports2.merge = merge2;
+    exports2.normalizeReplacements = normalizeReplacements;
+    exports2.validate = validate;
     var _excluded = ["placeholderWhitelist", "placeholderPattern", "preserveComments", "syntacticPlaceholders"];
     function _objectWithoutPropertiesLoose(r, e) {
       if (null == r)
@@ -14820,9 +18513,9 @@ var require_options = __commonJS({
 
 // node_modules/@babel/parser/lib/index.js
 var require_lib4 = __commonJS({
-  "node_modules/@babel/parser/lib/index.js"(exports) {
+  "node_modules/@babel/parser/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
     function _objectWithoutPropertiesLoose(r, e) {
@@ -29453,15 +33146,15 @@ var require_lib4 = __commonJS({
       }
       return cls;
     }
-    exports.parse = parse3;
-    exports.parseExpression = parseExpression;
-    exports.tokTypes = tokTypes;
+    exports2.parse = parse3;
+    exports2.parseExpression = parseExpression;
+    exports2.tokTypes = tokTypes;
   }
 });
 
 // node_modules/picocolors/picocolors.js
 var require_picocolors = __commonJS({
-  "node_modules/picocolors/picocolors.js"(exports, module) {
+  "node_modules/picocolors/picocolors.js"(exports2, module2) {
     var p = process || {};
     var argv = p.argv || [];
     var env = p.env || {};
@@ -29526,19 +33219,19 @@ var require_picocolors = __commonJS({
         bgWhiteBright: f("\x1B[107m", "\x1B[49m")
       };
     };
-    module.exports = createColors();
-    module.exports.createColors = createColors;
+    module2.exports = createColors();
+    module2.exports.createColors = createColors;
   }
 });
 
 // node_modules/js-tokens/index.js
 var require_js_tokens = __commonJS({
-  "node_modules/js-tokens/index.js"(exports) {
-    Object.defineProperty(exports, "__esModule", {
+  "node_modules/js-tokens/index.js"(exports2) {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = /((['"])(?:(?!\2|\\).|\\(?:\r\n|[\s\S]))*(\2)?|`(?:[^`\\$]|\\[\s\S]|\$(?!\{)|\$\{(?:[^{}]|\{[^}]*\}?)*\}?)*(`)?)|(\/\/.*)|(\/\*(?:[^*]|\*(?!\/))*(\*\/)?)|(\/(?!\*)(?:\[(?:(?![\]\\]).|\\.)*\]|(?![\/\]\\]).|\\.)+\/(?:(?!\s*(?:\b|[\u0080-\uFFFF$\\'"~({]|[+\-!](?!=)|\.?\d))|[gmiyus]{1,6}\b(?![\u0080-\uFFFF$\\]|\s*(?:[+\-*%&|^<>!=?({]|\/(?![\/*])))))|(0[xX][\da-fA-F]+|0[oO][0-7]+|0[bB][01]+|(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?)|((?!\d)(?:(?!\s)[$\w\u0080-\uFFFF]|\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\})+)|(--|\+\+|&&|\|\||=>|\.{3}|(?:[+\-\/%&|^]|\*{1,2}|<{1,2}|>{1,3}|!=?|={1,2})=?|[?~.,:;[\](){}])|(\s+)|(^$|[\s\S])/g;
-    exports.matchToToken = function(match) {
+    exports2.default = /((['"])(?:(?!\2|\\).|\\(?:\r\n|[\s\S]))*(\2)?|`(?:[^`\\$]|\\[\s\S]|\$(?!\{)|\$\{(?:[^{}]|\{[^}]*\}?)*\}?)*(`)?)|(\/\/.*)|(\/\*(?:[^*]|\*(?!\/))*(\*\/)?)|(\/(?!\*)(?:\[(?:(?![\]\\]).|\\.)*\]|(?![\/\]\\]).|\\.)+\/(?:(?!\s*(?:\b|[\u0080-\uFFFF$\\'"~({]|[+\-!](?!=)|\.?\d))|[gmiyus]{1,6}\b(?![\u0080-\uFFFF$\\]|\s*(?:[+\-*%&|^<>!=?({]|\/(?![\/*])))))|(0[xX][\da-fA-F]+|0[oO][0-7]+|0[bB][01]+|(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?)|((?!\d)(?:(?!\s)[$\w\u0080-\uFFFF]|\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\})+)|(--|\+\+|&&|\|\||=>|\.{3}|(?:[+\-\/%&|^]|\*{1,2}|<{1,2}|>{1,3}|!=?|={1,2})=?|[?~.,:;[\](){}])|(\s+)|(^$|[\s\S])/g;
+    exports2.matchToToken = function(match) {
       var token = { type: "invalid", value: match[0], closed: void 0 };
       if (match[1])
         token.type = "string", token.closed = !!(match[3] || match[4]);
@@ -29563,9 +33256,9 @@ var require_js_tokens = __commonJS({
 
 // node_modules/@babel/code-frame/lib/index.js
 var require_lib5 = __commonJS({
-  "node_modules/@babel/code-frame/lib/index.js"(exports) {
+  "node_modules/@babel/code-frame/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
+    Object.defineProperty(exports2, "__esModule", { value: true });
     var picocolors = require_picocolors();
     var jsTokens = require_js_tokens();
     var helperValidatorIdentifier = require_lib();
@@ -29771,20 +33464,20 @@ ${frame}`;
       };
       return codeFrameColumns(rawLines, location, opts);
     }
-    exports.codeFrameColumns = codeFrameColumns;
-    exports.default = index;
-    exports.highlight = highlight;
+    exports2.codeFrameColumns = codeFrameColumns;
+    exports2.default = index;
+    exports2.highlight = highlight;
   }
 });
 
 // node_modules/@babel/template/lib/parse.js
 var require_parse = __commonJS({
-  "node_modules/@babel/template/lib/parse.js"(exports) {
+  "node_modules/@babel/template/lib/parse.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = parseAndBuildMetadata;
+    exports2.default = parseAndBuildMetadata;
     var _t = require_lib3();
     var _parser = require_lib4();
     var _codeFrame = require_lib5();
@@ -29945,12 +33638,12 @@ var require_parse = __commonJS({
 
 // node_modules/@babel/template/lib/populate.js
 var require_populate = __commonJS({
-  "node_modules/@babel/template/lib/populate.js"(exports) {
+  "node_modules/@babel/template/lib/populate.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = populatePlaceholders;
+    exports2.default = populatePlaceholders;
     var _t = require_lib3();
     var {
       blockStatement,
@@ -30087,12 +33780,12 @@ var require_populate = __commonJS({
 
 // node_modules/@babel/template/lib/string.js
 var require_string = __commonJS({
-  "node_modules/@babel/template/lib/string.js"(exports) {
+  "node_modules/@babel/template/lib/string.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = stringTemplate;
+    exports2.default = stringTemplate;
     var _options = require_options();
     var _parse2 = require_parse();
     var _populate = require_populate();
@@ -30111,12 +33804,12 @@ var require_string = __commonJS({
 
 // node_modules/@babel/template/lib/literal.js
 var require_literal = __commonJS({
-  "node_modules/@babel/template/lib/literal.js"(exports) {
+  "node_modules/@babel/template/lib/literal.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = literalTemplate;
+    exports2.default = literalTemplate;
     var _options = require_options();
     var _parse2 = require_parse();
     var _populate = require_populate();
@@ -30183,12 +33876,12 @@ var require_literal = __commonJS({
 
 // node_modules/@babel/template/lib/builder.js
 var require_builder = __commonJS({
-  "node_modules/@babel/template/lib/builder.js"(exports) {
+  "node_modules/@babel/template/lib/builder.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = createTemplateBuilder;
+    exports2.default = createTemplateBuilder;
     var _options = require_options();
     var _string2 = require_string();
     var _literal2 = require_literal();
@@ -30260,20 +33953,20 @@ ${rootStack}`;
 
 // node_modules/@babel/template/lib/index.js
 var require_lib6 = __commonJS({
-  "node_modules/@babel/template/lib/index.js"(exports) {
+  "node_modules/@babel/template/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.statements = exports.statement = exports.smart = exports.program = exports.expression = exports.default = void 0;
+    exports2.statements = exports2.statement = exports2.smart = exports2.program = exports2.expression = exports2.default = void 0;
     var formatters = require_formatters();
     var _builder = require_builder();
-    var smart = exports.smart = (0, _builder.default)(formatters.smart);
-    var statement = exports.statement = (0, _builder.default)(formatters.statement);
-    var statements = exports.statements = (0, _builder.default)(formatters.statements);
-    var expression = exports.expression = (0, _builder.default)(formatters.expression);
-    var program = exports.program = (0, _builder.default)(formatters.program);
-    var _default3 = exports.default = Object.assign(smart.bind(void 0), {
+    var smart = exports2.smart = (0, _builder.default)(formatters.smart);
+    var statement = exports2.statement = (0, _builder.default)(formatters.statement);
+    var statements = exports2.statements = (0, _builder.default)(formatters.statements);
+    var expression = exports2.expression = (0, _builder.default)(formatters.expression);
+    var program = exports2.program = (0, _builder.default)(formatters.program);
+    var _default3 = exports2.default = Object.assign(smart.bind(void 0), {
       smart,
       statement,
       statements,
@@ -30286,12 +33979,12 @@ var require_lib6 = __commonJS({
 
 // node_modules/@babel/helpers/lib/helpers-generated.js
 var require_helpers_generated = __commonJS({
-  "node_modules/@babel/helpers/lib/helpers-generated.js"(exports) {
+  "node_modules/@babel/helpers/lib/helpers-generated.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _template = require_lib6();
     function helper(minVersion, source, metadata) {
       return Object.freeze({
@@ -30302,7 +33995,7 @@ var require_helpers_generated = __commonJS({
         metadata
       });
     }
-    var helpers = exports.default = {
+    var helpers = exports2.default = {
       __proto__: null,
       OverloadYield: helper("7.18.14", "function _OverloadYield(e,d){this.v=e,this.k=d}", {
         globals: [],
@@ -31529,16 +35222,16 @@ var require_helpers_generated = __commonJS({
 
 // node_modules/@babel/helpers/lib/index.js
 var require_lib7 = __commonJS({
-  "node_modules/@babel/helpers/lib/index.js"(exports) {
+  "node_modules/@babel/helpers/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
-    exports.get = get;
-    exports.getDependencies = getDependencies;
-    exports.list = void 0;
-    exports.minVersion = minVersion;
+    exports2.default = void 0;
+    exports2.get = get;
+    exports2.getDependencies = getDependencies;
+    exports2.list = void 0;
+    exports2.minVersion = minVersion;
     var _t = require_lib3();
     var _helpersGenerated = require_helpers_generated();
     var {
@@ -31644,54 +35337,54 @@ var require_lib7 = __commonJS({
       return loadHelper(name).getDependencies();
     }
     {
-      exports.ensure = (name) => {
+      exports2.ensure = (name) => {
         loadHelper(name);
       };
     }
-    var list = exports.list = Object.keys(_helpersGenerated.default).map((name) => name.replace(/^_/, ""));
-    var _default3 = exports.default = get;
+    var list = exports2.list = Object.keys(_helpersGenerated.default).map((name) => name.replace(/^_/, ""));
+    var _default3 = exports2.default = get;
   }
 });
 
 // node_modules/@babel/traverse/lib/path/lib/virtual-types.js
 var require_virtual_types = __commonJS({
-  "node_modules/@babel/traverse/lib/path/lib/virtual-types.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/lib/virtual-types.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.Var = exports.User = exports.Statement = exports.SpreadProperty = exports.Scope = exports.RestProperty = exports.ReferencedMemberExpression = exports.ReferencedIdentifier = exports.Referenced = exports.Pure = exports.NumericLiteralTypeAnnotation = exports.Generated = exports.ForAwaitStatement = exports.Flow = exports.Expression = exports.ExistentialTypeParam = exports.BlockScoped = exports.BindingIdentifier = void 0;
-    var ReferencedIdentifier = exports.ReferencedIdentifier = ["Identifier", "JSXIdentifier"];
-    var ReferencedMemberExpression = exports.ReferencedMemberExpression = ["MemberExpression"];
-    var BindingIdentifier = exports.BindingIdentifier = ["Identifier"];
-    var Statement = exports.Statement = ["Statement"];
-    var Expression = exports.Expression = ["Expression"];
-    var Scope = exports.Scope = ["Scopable", "Pattern"];
-    var Referenced = exports.Referenced = null;
-    var BlockScoped = exports.BlockScoped = null;
-    var Var = exports.Var = ["VariableDeclaration"];
-    var User = exports.User = null;
-    var Generated = exports.Generated = null;
-    var Pure = exports.Pure = null;
-    var Flow = exports.Flow = ["Flow", "ImportDeclaration", "ExportDeclaration", "ImportSpecifier"];
-    var RestProperty = exports.RestProperty = ["RestElement"];
-    var SpreadProperty = exports.SpreadProperty = ["RestElement"];
-    var ExistentialTypeParam = exports.ExistentialTypeParam = ["ExistsTypeAnnotation"];
-    var NumericLiteralTypeAnnotation = exports.NumericLiteralTypeAnnotation = ["NumberLiteralTypeAnnotation"];
-    var ForAwaitStatement = exports.ForAwaitStatement = ["ForOfStatement"];
+    exports2.Var = exports2.User = exports2.Statement = exports2.SpreadProperty = exports2.Scope = exports2.RestProperty = exports2.ReferencedMemberExpression = exports2.ReferencedIdentifier = exports2.Referenced = exports2.Pure = exports2.NumericLiteralTypeAnnotation = exports2.Generated = exports2.ForAwaitStatement = exports2.Flow = exports2.Expression = exports2.ExistentialTypeParam = exports2.BlockScoped = exports2.BindingIdentifier = void 0;
+    var ReferencedIdentifier = exports2.ReferencedIdentifier = ["Identifier", "JSXIdentifier"];
+    var ReferencedMemberExpression = exports2.ReferencedMemberExpression = ["MemberExpression"];
+    var BindingIdentifier = exports2.BindingIdentifier = ["Identifier"];
+    var Statement = exports2.Statement = ["Statement"];
+    var Expression = exports2.Expression = ["Expression"];
+    var Scope = exports2.Scope = ["Scopable", "Pattern"];
+    var Referenced = exports2.Referenced = null;
+    var BlockScoped = exports2.BlockScoped = null;
+    var Var = exports2.Var = ["VariableDeclaration"];
+    var User = exports2.User = null;
+    var Generated = exports2.Generated = null;
+    var Pure = exports2.Pure = null;
+    var Flow = exports2.Flow = ["Flow", "ImportDeclaration", "ExportDeclaration", "ImportSpecifier"];
+    var RestProperty = exports2.RestProperty = ["RestElement"];
+    var SpreadProperty = exports2.SpreadProperty = ["RestElement"];
+    var ExistentialTypeParam = exports2.ExistentialTypeParam = ["ExistsTypeAnnotation"];
+    var NumericLiteralTypeAnnotation = exports2.NumericLiteralTypeAnnotation = ["NumberLiteralTypeAnnotation"];
+    var ForAwaitStatement = exports2.ForAwaitStatement = ["ForOfStatement"];
   }
 });
 
 // node_modules/ms/index.js
 var require_ms = __commonJS({
-  "node_modules/ms/index.js"(exports, module) {
+  "node_modules/ms/index.js"(exports2, module2) {
     var s = 1e3;
     var m = s * 60;
     var h = m * 60;
     var d = h * 24;
     var w = d * 7;
     var y = d * 365.25;
-    module.exports = function(val, options) {
+    module2.exports = function(val, options) {
       options = options || {};
       var type = typeof val;
       if (type === "string" && val.length > 0) {
@@ -31800,7 +35493,7 @@ var require_ms = __commonJS({
 
 // node_modules/debug/src/common.js
 var require_common = __commonJS({
-  "node_modules/debug/src/common.js"(exports, module) {
+  "node_modules/debug/src/common.js"(exports2, module2) {
     function setup(env) {
       createDebug.debug = createDebug;
       createDebug.default = createDebug;
@@ -31971,19 +35664,19 @@ var require_common = __commonJS({
       createDebug.enable(createDebug.load());
       return createDebug;
     }
-    module.exports = setup;
+    module2.exports = setup;
   }
 });
 
 // node_modules/debug/src/browser.js
 var require_browser = __commonJS({
-  "node_modules/debug/src/browser.js"(exports, module) {
-    exports.formatArgs = formatArgs;
-    exports.save = save;
-    exports.load = load;
-    exports.useColors = useColors;
-    exports.storage = localstorage();
-    exports.destroy = /* @__PURE__ */ (() => {
+  "node_modules/debug/src/browser.js"(exports2, module2) {
+    exports2.formatArgs = formatArgs;
+    exports2.save = save;
+    exports2.load = load;
+    exports2.useColors = useColors;
+    exports2.storage = localstorage();
+    exports2.destroy = /* @__PURE__ */ (() => {
       let warned = false;
       return () => {
         if (!warned) {
@@ -31992,7 +35685,7 @@ var require_browser = __commonJS({
         }
       };
     })();
-    exports.colors = [
+    exports2.colors = [
       "#0000CC",
       "#0000FF",
       "#0033CC",
@@ -32085,7 +35778,7 @@ var require_browser = __commonJS({
       typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/);
     }
     function formatArgs(args) {
-      args[0] = (this.useColors ? "%c" : "") + this.namespace + (this.useColors ? " %c" : " ") + args[0] + (this.useColors ? "%c " : " ") + "+" + module.exports.humanize(this.diff);
+      args[0] = (this.useColors ? "%c" : "") + this.namespace + (this.useColors ? " %c" : " ") + args[0] + (this.useColors ? "%c " : " ") + "+" + module2.exports.humanize(this.diff);
       if (!this.useColors) {
         return;
       }
@@ -32104,14 +35797,14 @@ var require_browser = __commonJS({
       });
       args.splice(lastC, 0, c);
     }
-    exports.log = console.debug || console.log || (() => {
+    exports2.log = console.debug || console.log || (() => {
     });
     function save(namespaces) {
       try {
         if (namespaces) {
-          exports.storage.setItem("debug", namespaces);
+          exports2.storage.setItem("debug", namespaces);
         } else {
-          exports.storage.removeItem("debug");
+          exports2.storage.removeItem("debug");
         }
       } catch (error35) {
       }
@@ -32119,7 +35812,7 @@ var require_browser = __commonJS({
     function load() {
       let r;
       try {
-        r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
+        r = exports2.storage.getItem("debug") || exports2.storage.getItem("DEBUG");
       } catch (error35) {
       }
       if (!r && typeof process !== "undefined" && "env" in process) {
@@ -32133,8 +35826,8 @@ var require_browser = __commonJS({
       } catch (error35) {
       }
     }
-    module.exports = require_common()(exports);
-    var { formatters } = module.exports;
+    module2.exports = require_common()(exports2);
+    var { formatters } = module2.exports;
     formatters.j = function(v) {
       try {
         return JSON.stringify(v);
@@ -32147,9 +35840,9 @@ var require_browser = __commonJS({
 
 // node_modules/has-flag/index.js
 var require_has_flag = __commonJS({
-  "node_modules/has-flag/index.js"(exports, module) {
+  "node_modules/has-flag/index.js"(exports2, module2) {
     "use strict";
-    module.exports = (flag, argv = process.argv) => {
+    module2.exports = (flag, argv = process.argv) => {
       const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
       const position = argv.indexOf(prefix + flag);
       const terminatorPosition = argv.indexOf("--");
@@ -32160,10 +35853,10 @@ var require_has_flag = __commonJS({
 
 // node_modules/supports-color/index.js
 var require_supports_color = __commonJS({
-  "node_modules/supports-color/index.js"(exports, module) {
+  "node_modules/supports-color/index.js"(exports2, module2) {
     "use strict";
-    var os = __require("os");
-    var tty = __require("tty");
+    var os = require("os");
+    var tty = require("tty");
     var hasFlag = require_has_flag();
     var { env } = process;
     var flagForceColor;
@@ -32264,7 +35957,7 @@ var require_supports_color = __commonJS({
       });
       return translateLevel(level);
     }
-    module.exports = {
+    module2.exports = {
       supportsColor: getSupportLevel,
       stdout: getSupportLevel({ isTTY: tty.isatty(1) }),
       stderr: getSupportLevel({ isTTY: tty.isatty(2) })
@@ -32274,25 +35967,25 @@ var require_supports_color = __commonJS({
 
 // node_modules/debug/src/node.js
 var require_node = __commonJS({
-  "node_modules/debug/src/node.js"(exports, module) {
-    var tty = __require("tty");
-    var util2 = __require("util");
-    exports.init = init;
-    exports.log = log2;
-    exports.formatArgs = formatArgs;
-    exports.save = save;
-    exports.load = load;
-    exports.useColors = useColors;
-    exports.destroy = util2.deprecate(
+  "node_modules/debug/src/node.js"(exports2, module2) {
+    var tty = require("tty");
+    var util2 = require("util");
+    exports2.init = init;
+    exports2.log = log2;
+    exports2.formatArgs = formatArgs;
+    exports2.save = save;
+    exports2.load = load;
+    exports2.useColors = useColors;
+    exports2.destroy = util2.deprecate(
       () => {
       },
       "Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`."
     );
-    exports.colors = [6, 2, 3, 4, 5, 1];
+    exports2.colors = [6, 2, 3, 4, 5, 1];
     try {
       const supportsColor = require_supports_color();
       if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
-        exports.colors = [
+        exports2.colors = [
           20,
           21,
           26,
@@ -32373,7 +36066,7 @@ var require_node = __commonJS({
       }
     } catch (error35) {
     }
-    exports.inspectOpts = Object.keys(process.env).filter((key) => {
+    exports2.inspectOpts = Object.keys(process.env).filter((key) => {
       return /^debug_/i.test(key);
     }).reduce((obj, key) => {
       const prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, (_, k) => {
@@ -32393,7 +36086,7 @@ var require_node = __commonJS({
       return obj;
     }, {});
     function useColors() {
-      return "colors" in exports.inspectOpts ? Boolean(exports.inspectOpts.colors) : tty.isatty(process.stderr.fd);
+      return "colors" in exports2.inspectOpts ? Boolean(exports2.inspectOpts.colors) : tty.isatty(process.stderr.fd);
     }
     function formatArgs(args) {
       const { namespace: name, useColors: useColors2 } = this;
@@ -32402,19 +36095,19 @@ var require_node = __commonJS({
         const colorCode = "\x1B[3" + (c < 8 ? c : "8;5;" + c);
         const prefix = `  ${colorCode};1m${name} \x1B[0m`;
         args[0] = prefix + args[0].split("\n").join("\n" + prefix);
-        args.push(colorCode + "m+" + module.exports.humanize(this.diff) + "\x1B[0m");
+        args.push(colorCode + "m+" + module2.exports.humanize(this.diff) + "\x1B[0m");
       } else {
         args[0] = getDate() + name + " " + args[0];
       }
     }
     function getDate() {
-      if (exports.inspectOpts.hideDate) {
+      if (exports2.inspectOpts.hideDate) {
         return "";
       }
       return (/* @__PURE__ */ new Date()).toISOString() + " ";
     }
     function log2(...args) {
-      return process.stderr.write(util2.formatWithOptions(exports.inspectOpts, ...args) + "\n");
+      return process.stderr.write(util2.formatWithOptions(exports2.inspectOpts, ...args) + "\n");
     }
     function save(namespaces) {
       if (namespaces) {
@@ -32428,13 +36121,13 @@ var require_node = __commonJS({
     }
     function init(debug) {
       debug.inspectOpts = {};
-      const keys = Object.keys(exports.inspectOpts);
+      const keys = Object.keys(exports2.inspectOpts);
       for (let i = 0; i < keys.length; i++) {
-        debug.inspectOpts[keys[i]] = exports.inspectOpts[keys[i]];
+        debug.inspectOpts[keys[i]] = exports2.inspectOpts[keys[i]];
       }
     }
-    module.exports = require_common()(exports);
-    var { formatters } = module.exports;
+    module2.exports = require_common()(exports2);
+    var { formatters } = module2.exports;
     formatters.o = function(v) {
       this.inspectOpts.colors = this.useColors;
       return util2.inspect(v, this.inspectOpts).split("\n").map((str) => str.trim()).join(" ");
@@ -32448,38 +36141,38 @@ var require_node = __commonJS({
 
 // node_modules/debug/src/index.js
 var require_src = __commonJS({
-  "node_modules/debug/src/index.js"(exports, module) {
+  "node_modules/debug/src/index.js"(exports2, module2) {
     if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
-      module.exports = require_browser();
+      module2.exports = require_browser();
     } else {
-      module.exports = require_node();
+      module2.exports = require_node();
     }
   }
 });
 
 // node_modules/@babel/traverse/lib/path/lib/virtual-types-validator.js
 var require_virtual_types_validator = __commonJS({
-  "node_modules/@babel/traverse/lib/path/lib/virtual-types-validator.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/lib/virtual-types-validator.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.isBindingIdentifier = isBindingIdentifier;
-    exports.isBlockScoped = isBlockScoped;
-    exports.isExpression = isExpression;
-    exports.isFlow = isFlow;
-    exports.isForAwaitStatement = isForAwaitStatement;
-    exports.isGenerated = isGenerated;
-    exports.isPure = isPure;
-    exports.isReferenced = isReferenced;
-    exports.isReferencedIdentifier = isReferencedIdentifier;
-    exports.isReferencedMemberExpression = isReferencedMemberExpression;
-    exports.isRestProperty = isRestProperty;
-    exports.isScope = isScope;
-    exports.isSpreadProperty = isSpreadProperty;
-    exports.isStatement = isStatement;
-    exports.isUser = isUser;
-    exports.isVar = isVar;
+    exports2.isBindingIdentifier = isBindingIdentifier;
+    exports2.isBlockScoped = isBlockScoped;
+    exports2.isExpression = isExpression;
+    exports2.isFlow = isFlow;
+    exports2.isForAwaitStatement = isForAwaitStatement;
+    exports2.isGenerated = isGenerated;
+    exports2.isPure = isPure;
+    exports2.isReferenced = isReferenced;
+    exports2.isReferencedIdentifier = isReferencedIdentifier;
+    exports2.isReferencedMemberExpression = isReferencedMemberExpression;
+    exports2.isRestProperty = isRestProperty;
+    exports2.isScope = isScope;
+    exports2.isSpreadProperty = isSpreadProperty;
+    exports2.isStatement = isStatement;
+    exports2.isUser = isUser;
+    exports2.isVar = isVar;
     var _t = require_lib3();
     var {
       isBinding,
@@ -32616,10 +36309,10 @@ var require_virtual_types_validator = __commonJS({
       });
     }
     {
-      exports.isExistentialTypeParam = function isExistentialTypeParam() {
+      exports2.isExistentialTypeParam = function isExistentialTypeParam() {
         throw new Error("`path.isExistentialTypeParam` has been renamed to `path.isExistsTypeAnnotation()` in Babel 7.");
       };
-      exports.isNumericLiteralTypeAnnotation = function isNumericLiteralTypeAnnotation() {
+      exports2.isNumericLiteralTypeAnnotation = function isNumericLiteralTypeAnnotation() {
         throw new Error("`path.isNumericLiteralTypeAnnotation()` has been renamed to `path.isNumberLiteralTypeAnnotation()` in Babel 7.");
       };
     }
@@ -32628,16 +36321,16 @@ var require_virtual_types_validator = __commonJS({
 
 // node_modules/@babel/traverse/lib/visitors.js
 var require_visitors = __commonJS({
-  "node_modules/@babel/traverse/lib/visitors.js"(exports) {
+  "node_modules/@babel/traverse/lib/visitors.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.environmentVisitor = environmentVisitor;
-    exports.explode = explode$1;
-    exports.isExplodedVisitor = isExplodedVisitor;
-    exports.merge = merge2;
-    exports.verify = verify$1;
+    exports2.environmentVisitor = environmentVisitor;
+    exports2.explode = explode$1;
+    exports2.isExplodedVisitor = isExplodedVisitor;
+    exports2.merge = merge2;
+    exports2.verify = verify$1;
     var virtualTypes = require_virtual_types();
     var virtualTypesValidators = require_virtual_types_validator();
     var _t = require_lib3();
@@ -32909,12 +36602,12 @@ var require_visitors = __commonJS({
 
 // node_modules/@babel/traverse/lib/scope/lib/renamer.js
 var require_renamer = __commonJS({
-  "node_modules/@babel/traverse/lib/scope/lib/renamer.js"(exports) {
+  "node_modules/@babel/traverse/lib/scope/lib/renamer.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var t = require_lib3();
     var _t = t;
     var _traverseNode = require_traverse_node();
@@ -33040,18 +36733,18 @@ var require_renamer = __commonJS({
         }
       }
     };
-    exports.default = Renamer;
+    exports2.default = Renamer;
   }
 });
 
 // node_modules/@babel/traverse/lib/scope/binding.js
 var require_binding = __commonJS({
-  "node_modules/@babel/traverse/lib/scope/binding.js"(exports) {
+  "node_modules/@babel/traverse/lib/scope/binding.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var Binding = class {
       constructor({
         identifier,
@@ -33112,7 +36805,7 @@ var require_binding = __commonJS({
         this.referenced = !!this.references;
       }
     };
-    exports.default = Binding;
+    exports2.default = Binding;
     function isInitInLoop(path3) {
       const isFunctionDeclarationOrHasInit = !path3.isVariableDeclarator() || path3.node.init;
       for (let {
@@ -33135,8 +36828,8 @@ var require_binding = __commonJS({
 
 // node_modules/globals/globals.json
 var require_globals = __commonJS({
-  "node_modules/globals/globals.json"(exports, module) {
-    module.exports = {
+  "node_modules/globals/globals.json"(exports2, module2) {
+    module2.exports = {
       builtin: {
         Array: false,
         ArrayBuffer: false,
@@ -34704,36 +38397,36 @@ var require_globals = __commonJS({
 
 // node_modules/globals/index.js
 var require_globals2 = __commonJS({
-  "node_modules/globals/index.js"(exports, module) {
+  "node_modules/globals/index.js"(exports2, module2) {
     "use strict";
-    module.exports = require_globals();
+    module2.exports = require_globals();
   }
 });
 
 // node_modules/@babel/traverse/lib/cache.js
 var require_cache = __commonJS({
-  "node_modules/@babel/traverse/lib/cache.js"(exports) {
+  "node_modules/@babel/traverse/lib/cache.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.clear = clear;
-    exports.clearPath = clearPath;
-    exports.clearScope = clearScope;
-    exports.getCachedPaths = getCachedPaths;
-    exports.getOrCreateCachedPaths = getOrCreateCachedPaths;
-    exports.scope = exports.path = void 0;
-    var pathsCache = exports.path = /* @__PURE__ */ new WeakMap();
-    var scope = exports.scope = /* @__PURE__ */ new WeakMap();
+    exports2.clear = clear;
+    exports2.clearPath = clearPath;
+    exports2.clearScope = clearScope;
+    exports2.getCachedPaths = getCachedPaths;
+    exports2.getOrCreateCachedPaths = getOrCreateCachedPaths;
+    exports2.scope = exports2.path = void 0;
+    var pathsCache = exports2.path = /* @__PURE__ */ new WeakMap();
+    var scope = exports2.scope = /* @__PURE__ */ new WeakMap();
     function clear() {
       clearPath();
       clearScope();
     }
     function clearPath() {
-      exports.path = pathsCache = /* @__PURE__ */ new WeakMap();
+      exports2.path = pathsCache = /* @__PURE__ */ new WeakMap();
     }
     function clearScope() {
-      exports.scope = scope = /* @__PURE__ */ new WeakMap();
+      exports2.scope = scope = /* @__PURE__ */ new WeakMap();
     }
     function getCachedPaths(path3) {
       const {
@@ -34754,12 +38447,12 @@ var require_cache = __commonJS({
 
 // node_modules/@babel/traverse/lib/scope/index.js
 var require_scope = __commonJS({
-  "node_modules/@babel/traverse/lib/scope/index.js"(exports) {
+  "node_modules/@babel/traverse/lib/scope/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _renamer = require_renamer();
     var _index = require_lib9();
     var _binding = require_binding();
@@ -35718,7 +39411,7 @@ var require_scope = __commonJS({
         }
       }
     };
-    exports.default = Scope;
+    exports2.default = Scope;
     Scope.globals = Object.keys(_globals.builtin);
     Scope.contextVariables = ["arguments", "undefined", "Infinity", "NaN"];
     {
@@ -35805,10 +39498,10 @@ var require_scope = __commonJS({
 
 // node_modules/@jridgewell/set-array/dist/set-array.umd.js
 var require_set_array_umd = __commonJS({
-  "node_modules/@jridgewell/set-array/dist/set-array.umd.js"(exports, module) {
+  "node_modules/@jridgewell/set-array/dist/set-array.umd.js"(exports2, module2) {
     (function(global2, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.setArray = {}));
-    })(exports, function(exports2) {
+      typeof exports2 === "object" && typeof module2 !== "undefined" ? factory(exports2) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.setArray = {}));
+    })(exports2, function(exports3) {
       "use strict";
       class SetArray {
         constructor() {
@@ -35850,22 +39543,22 @@ var require_set_array_umd = __commonJS({
         indexes[key] = void 0;
         array2.pop();
       }
-      exports2.SetArray = SetArray;
-      exports2.get = get;
-      exports2.pop = pop;
-      exports2.put = put;
-      exports2.remove = remove;
-      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports3.SetArray = SetArray;
+      exports3.get = get;
+      exports3.pop = pop;
+      exports3.put = put;
+      exports3.remove = remove;
+      Object.defineProperty(exports3, "__esModule", { value: true });
     });
   }
 });
 
 // node_modules/@jridgewell/sourcemap-codec/dist/sourcemap-codec.umd.js
 var require_sourcemap_codec_umd = __commonJS({
-  "node_modules/@jridgewell/sourcemap-codec/dist/sourcemap-codec.umd.js"(exports, module) {
+  "node_modules/@jridgewell/sourcemap-codec/dist/sourcemap-codec.umd.js"(exports2, module2) {
     (function(global2, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.sourcemapCodec = {}));
-    })(exports, function(exports2) {
+      typeof exports2 === "object" && typeof module2 !== "undefined" ? factory(exports2) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.sourcemapCodec = {}));
+    })(exports2, function(exports3) {
       "use strict";
       const comma = ",".charCodeAt(0);
       const semicolon = ";".charCodeAt(0);
@@ -36273,23 +39966,23 @@ var require_sourcemap_codec_umd = __commonJS({
         }
         return writer.flush();
       }
-      exports2.decode = decode;
-      exports2.decodeGeneratedRanges = decodeGeneratedRanges;
-      exports2.decodeOriginalScopes = decodeOriginalScopes;
-      exports2.encode = encode;
-      exports2.encodeGeneratedRanges = encodeGeneratedRanges;
-      exports2.encodeOriginalScopes = encodeOriginalScopes;
-      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports3.decode = decode;
+      exports3.decodeGeneratedRanges = decodeGeneratedRanges;
+      exports3.decodeOriginalScopes = decodeOriginalScopes;
+      exports3.encode = encode;
+      exports3.encodeGeneratedRanges = encodeGeneratedRanges;
+      exports3.encodeOriginalScopes = encodeOriginalScopes;
+      Object.defineProperty(exports3, "__esModule", { value: true });
     });
   }
 });
 
 // node_modules/@jridgewell/resolve-uri/dist/resolve-uri.umd.js
 var require_resolve_uri_umd = __commonJS({
-  "node_modules/@jridgewell/resolve-uri/dist/resolve-uri.umd.js"(exports, module) {
+  "node_modules/@jridgewell/resolve-uri/dist/resolve-uri.umd.js"(exports2, module2) {
     (function(global2, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory() : typeof define === "function" && define.amd ? define(factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, global2.resolveURI = factory());
-    })(exports, function() {
+      typeof exports2 === "object" && typeof module2 !== "undefined" ? module2.exports = factory() : typeof define === "function" && define.amd ? define(factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, global2.resolveURI = factory());
+    })(exports2, function() {
       "use strict";
       const schemeRegex = /^[\w+.-]+:\/\//;
       const urlRegex = /^([\w+.-]+:)\/\/([^@/#?]*@)?([^:/#?]*)(:\d+)?(\/[^#?]*)?(\?[^#]*)?(#.*)?/;
@@ -36459,10 +40152,10 @@ var require_resolve_uri_umd = __commonJS({
 
 // node_modules/@jridgewell/trace-mapping/dist/trace-mapping.umd.js
 var require_trace_mapping_umd = __commonJS({
-  "node_modules/@jridgewell/trace-mapping/dist/trace-mapping.umd.js"(exports, module) {
+  "node_modules/@jridgewell/trace-mapping/dist/trace-mapping.umd.js"(exports2, module2) {
     (function(global2, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? factory(exports, require_sourcemap_codec_umd(), require_resolve_uri_umd()) : typeof define === "function" && define.amd ? define(["exports", "@jridgewell/sourcemap-codec", "@jridgewell/resolve-uri"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.traceMapping = {}, global2.sourcemapCodec, global2.resolveURI));
-    })(exports, function(exports2, sourcemapCodec, resolveUri) {
+      typeof exports2 === "object" && typeof module2 !== "undefined" ? factory(exports2, require_sourcemap_codec_umd(), require_resolve_uri_umd()) : typeof define === "function" && define.amd ? define(["exports", "@jridgewell/sourcemap-codec", "@jridgewell/resolve-uri"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.traceMapping = {}, global2.sourcemapCodec, global2.resolveURI));
+    })(exports2, function(exports3, sourcemapCodec, resolveUri) {
       "use strict";
       function resolve(input, base) {
         if (base && !base.endsWith("/"))
@@ -36913,32 +40606,32 @@ var require_trace_mapping_umd = __commonJS({
         const segment = segments[index];
         return GMapping(segment[REV_GENERATED_LINE] + 1, segment[REV_GENERATED_COLUMN]);
       }
-      exports2.AnyMap = AnyMap;
-      exports2.GREATEST_LOWER_BOUND = GREATEST_LOWER_BOUND;
-      exports2.LEAST_UPPER_BOUND = LEAST_UPPER_BOUND;
-      exports2.TraceMap = TraceMap;
-      exports2.allGeneratedPositionsFor = allGeneratedPositionsFor;
-      exports2.decodedMap = decodedMap;
-      exports2.decodedMappings = decodedMappings;
-      exports2.eachMapping = eachMapping;
-      exports2.encodedMap = encodedMap;
-      exports2.encodedMappings = encodedMappings;
-      exports2.generatedPositionFor = generatedPositionFor;
-      exports2.isIgnored = isIgnored;
-      exports2.originalPositionFor = originalPositionFor;
-      exports2.presortedDecodedMap = presortedDecodedMap;
-      exports2.sourceContentFor = sourceContentFor;
-      exports2.traceSegment = traceSegment;
+      exports3.AnyMap = AnyMap;
+      exports3.GREATEST_LOWER_BOUND = GREATEST_LOWER_BOUND;
+      exports3.LEAST_UPPER_BOUND = LEAST_UPPER_BOUND;
+      exports3.TraceMap = TraceMap;
+      exports3.allGeneratedPositionsFor = allGeneratedPositionsFor;
+      exports3.decodedMap = decodedMap;
+      exports3.decodedMappings = decodedMappings;
+      exports3.eachMapping = eachMapping;
+      exports3.encodedMap = encodedMap;
+      exports3.encodedMappings = encodedMappings;
+      exports3.generatedPositionFor = generatedPositionFor;
+      exports3.isIgnored = isIgnored;
+      exports3.originalPositionFor = originalPositionFor;
+      exports3.presortedDecodedMap = presortedDecodedMap;
+      exports3.sourceContentFor = sourceContentFor;
+      exports3.traceSegment = traceSegment;
     });
   }
 });
 
 // node_modules/@jridgewell/gen-mapping/dist/gen-mapping.umd.js
 var require_gen_mapping_umd = __commonJS({
-  "node_modules/@jridgewell/gen-mapping/dist/gen-mapping.umd.js"(exports, module) {
+  "node_modules/@jridgewell/gen-mapping/dist/gen-mapping.umd.js"(exports2, module2) {
     (function(global2, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? factory(exports, require_set_array_umd(), require_sourcemap_codec_umd(), require_trace_mapping_umd()) : typeof define === "function" && define.amd ? define(["exports", "@jridgewell/set-array", "@jridgewell/sourcemap-codec", "@jridgewell/trace-mapping"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.genMapping = {}, global2.setArray, global2.sourcemapCodec, global2.traceMapping));
-    })(exports, function(exports2, setArray, sourcemapCodec, traceMapping) {
+      typeof exports2 === "object" && typeof module2 !== "undefined" ? factory(exports2, require_set_array_umd(), require_sourcemap_codec_umd(), require_trace_mapping_umd()) : typeof define === "function" && define.amd ? define(["exports", "@jridgewell/set-array", "@jridgewell/sourcemap-codec", "@jridgewell/trace-mapping"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, factory(global2.genMapping = {}, global2.setArray, global2.sourcemapCodec, global2.traceMapping));
+    })(exports2, function(exports3, setArray, sourcemapCodec, traceMapping) {
       "use strict";
       const COLUMN = 0;
       const SOURCES_INDEX = 1;
@@ -37112,30 +40805,30 @@ var require_gen_mapping_umd = __commonJS({
         }
         return addSegmentInternal(skipable, map2, generated.line - 1, generated.column, source, original.line - 1, original.column, name, content);
       }
-      exports2.GenMapping = GenMapping;
-      exports2.addMapping = addMapping;
-      exports2.addSegment = addSegment;
-      exports2.allMappings = allMappings;
-      exports2.fromMap = fromMap;
-      exports2.maybeAddMapping = maybeAddMapping;
-      exports2.maybeAddSegment = maybeAddSegment;
-      exports2.setIgnore = setIgnore;
-      exports2.setSourceContent = setSourceContent;
-      exports2.toDecodedMap = toDecodedMap;
-      exports2.toEncodedMap = toEncodedMap;
-      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports3.GenMapping = GenMapping;
+      exports3.addMapping = addMapping;
+      exports3.addSegment = addSegment;
+      exports3.allMappings = allMappings;
+      exports3.fromMap = fromMap;
+      exports3.maybeAddMapping = maybeAddMapping;
+      exports3.maybeAddSegment = maybeAddSegment;
+      exports3.setIgnore = setIgnore;
+      exports3.setSourceContent = setSourceContent;
+      exports3.toDecodedMap = toDecodedMap;
+      exports3.toEncodedMap = toEncodedMap;
+      Object.defineProperty(exports3, "__esModule", { value: true });
     });
   }
 });
 
 // node_modules/@babel/generator/lib/source-map.js
 var require_source_map = __commonJS({
-  "node_modules/@babel/generator/lib/source-map.js"(exports) {
+  "node_modules/@babel/generator/lib/source-map.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _genMapping = require_gen_mapping_umd();
     var _traceMapping = require_trace_mapping_umd();
     var SourceMap = class {
@@ -37212,18 +40905,18 @@ var require_source_map = __commonJS({
         });
       }
     };
-    exports.default = SourceMap;
+    exports2.default = SourceMap;
   }
 });
 
 // node_modules/@babel/generator/lib/buffer.js
 var require_buffer = __commonJS({
-  "node_modules/@babel/generator/lib/buffer.js"(exports) {
+  "node_modules/@babel/generator/lib/buffer.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var Buffer2 = class {
       constructor(map2, indentChar) {
         this._map = null;
@@ -37537,18 +41230,18 @@ var require_buffer = __commonJS({
         return this._position.line + count;
       }
     };
-    exports.default = Buffer2;
+    exports2.default = Buffer2;
   }
 });
 
 // node_modules/@babel/generator/lib/node/whitespace.js
 var require_whitespace = __commonJS({
-  "node_modules/@babel/generator/lib/node/whitespace.js"(exports) {
+  "node_modules/@babel/generator/lib/node/whitespace.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.nodes = void 0;
+    exports2.nodes = void 0;
     var _t = require_lib3();
     var {
       FLIPPED_ALIAS_KEYS,
@@ -37611,7 +41304,7 @@ var require_whitespace = __commonJS({
     function isType(node) {
       return isLiteral(node) || isObjectExpression(node) || isArrayExpression(node) || isIdentifier(node) || isMemberExpression(node);
     }
-    var nodes = exports.nodes = {
+    var nodes = exports2.nodes = {
       AssignmentExpression(node) {
         const state = crawl(node.right);
         if (state.hasCall && state.hasHelper || state.hasFunction) {
@@ -37694,38 +41387,38 @@ var require_whitespace = __commonJS({
 
 // node_modules/@babel/generator/lib/node/parentheses.js
 var require_parentheses = __commonJS({
-  "node_modules/@babel/generator/lib/node/parentheses.js"(exports) {
+  "node_modules/@babel/generator/lib/node/parentheses.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.AssignmentExpression = AssignmentExpression;
-    exports.Binary = Binary;
-    exports.BinaryExpression = BinaryExpression;
-    exports.ClassExpression = ClassExpression;
-    exports.ArrowFunctionExpression = exports.ConditionalExpression = ConditionalExpression;
-    exports.DoExpression = DoExpression;
-    exports.FunctionExpression = FunctionExpression;
-    exports.FunctionTypeAnnotation = FunctionTypeAnnotation;
-    exports.Identifier = Identifier;
-    exports.LogicalExpression = LogicalExpression;
-    exports.NullableTypeAnnotation = NullableTypeAnnotation;
-    exports.ObjectExpression = ObjectExpression;
-    exports.OptionalIndexedAccessType = OptionalIndexedAccessType;
-    exports.OptionalCallExpression = exports.OptionalMemberExpression = OptionalMemberExpression;
-    exports.SequenceExpression = SequenceExpression;
-    exports.TSSatisfiesExpression = exports.TSAsExpression = TSAsExpression;
-    exports.TSConditionalType = TSConditionalType;
-    exports.TSConstructorType = exports.TSFunctionType = TSFunctionType;
-    exports.TSInferType = TSInferType;
-    exports.TSInstantiationExpression = TSInstantiationExpression;
-    exports.TSIntersectionType = TSIntersectionType;
-    exports.UnaryLike = exports.TSTypeAssertion = UnaryLike;
-    exports.TSTypeOperator = TSTypeOperator;
-    exports.TSUnionType = TSUnionType;
-    exports.IntersectionTypeAnnotation = exports.UnionTypeAnnotation = UnionTypeAnnotation;
-    exports.UpdateExpression = UpdateExpression;
-    exports.AwaitExpression = exports.YieldExpression = YieldExpression;
+    exports2.AssignmentExpression = AssignmentExpression;
+    exports2.Binary = Binary;
+    exports2.BinaryExpression = BinaryExpression;
+    exports2.ClassExpression = ClassExpression;
+    exports2.ArrowFunctionExpression = exports2.ConditionalExpression = ConditionalExpression;
+    exports2.DoExpression = DoExpression;
+    exports2.FunctionExpression = FunctionExpression;
+    exports2.FunctionTypeAnnotation = FunctionTypeAnnotation;
+    exports2.Identifier = Identifier;
+    exports2.LogicalExpression = LogicalExpression;
+    exports2.NullableTypeAnnotation = NullableTypeAnnotation;
+    exports2.ObjectExpression = ObjectExpression;
+    exports2.OptionalIndexedAccessType = OptionalIndexedAccessType;
+    exports2.OptionalCallExpression = exports2.OptionalMemberExpression = OptionalMemberExpression;
+    exports2.SequenceExpression = SequenceExpression;
+    exports2.TSSatisfiesExpression = exports2.TSAsExpression = TSAsExpression;
+    exports2.TSConditionalType = TSConditionalType;
+    exports2.TSConstructorType = exports2.TSFunctionType = TSFunctionType;
+    exports2.TSInferType = TSInferType;
+    exports2.TSInstantiationExpression = TSInstantiationExpression;
+    exports2.TSIntersectionType = TSIntersectionType;
+    exports2.UnaryLike = exports2.TSTypeAssertion = UnaryLike;
+    exports2.TSTypeOperator = TSTypeOperator;
+    exports2.TSUnionType = TSUnionType;
+    exports2.IntersectionTypeAnnotation = exports2.UnionTypeAnnotation = UnionTypeAnnotation;
+    exports2.UpdateExpression = UpdateExpression;
+    exports2.AwaitExpression = exports2.YieldExpression = YieldExpression;
     var _t = require_lib3();
     var _index = require_node2();
     var {
@@ -37960,17 +41653,17 @@ var require_parentheses = __commonJS({
 
 // node_modules/@babel/generator/lib/node/index.js
 var require_node2 = __commonJS({
-  "node_modules/@babel/generator/lib/node/index.js"(exports) {
+  "node_modules/@babel/generator/lib/node/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.TokenContext = void 0;
-    exports.isLastChild = isLastChild;
-    exports.needsParens = needsParens;
-    exports.needsWhitespace = needsWhitespace;
-    exports.needsWhitespaceAfter = needsWhitespaceAfter;
-    exports.needsWhitespaceBefore = needsWhitespaceBefore;
+    exports2.TokenContext = void 0;
+    exports2.isLastChild = isLastChild;
+    exports2.needsParens = needsParens;
+    exports2.needsWhitespace = needsWhitespace;
+    exports2.needsWhitespaceAfter = needsWhitespaceAfter;
+    exports2.needsWhitespaceBefore = needsWhitespaceBefore;
     var whitespace = require_whitespace();
     var parens = require_parentheses();
     var _t = require_lib3();
@@ -37984,7 +41677,7 @@ var require_node2 = __commonJS({
       isNewExpression,
       isParenthesizedExpression
     } = _t;
-    var TokenContext = exports.TokenContext = {
+    var TokenContext = exports2.TokenContext = {
       expressionStatement: 1,
       arrowBody: 2,
       exportDefault: 4,
@@ -38086,12 +41779,12 @@ var require_node2 = __commonJS({
 
 // node_modules/@babel/generator/lib/token-map.js
 var require_token_map = __commonJS({
-  "node_modules/@babel/generator/lib/token-map.js"(exports) {
+  "node_modules/@babel/generator/lib/token-map.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.TokenMap = void 0;
+    exports2.TokenMap = void 0;
     var _t = require_lib3();
     var {
       traverseFast,
@@ -38269,7 +41962,7 @@ var require_token_map = __commonJS({
         return high;
       }
     };
-    exports.TokenMap = TokenMap;
+    exports2.TokenMap = TokenMap;
     function* childrenIterator(node) {
       if (node.type === "TemplateLiteral") {
         yield node.quasis[0];
@@ -38296,15 +41989,15 @@ var require_token_map = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/template-literals.js
 var require_template_literals = __commonJS({
-  "node_modules/@babel/generator/lib/generators/template-literals.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/template-literals.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.TaggedTemplateExpression = TaggedTemplateExpression;
-    exports.TemplateElement = TemplateElement;
-    exports.TemplateLiteral = TemplateLiteral;
-    exports._printTemplate = _printTemplate;
+    exports2.TaggedTemplateExpression = TaggedTemplateExpression;
+    exports2.TemplateElement = TemplateElement;
+    exports2.TemplateLiteral = TemplateLiteral;
+    exports2._printTemplate = _printTemplate;
     function TaggedTemplateExpression(node) {
       this.print(node.tag);
       {
@@ -38340,38 +42033,38 @@ var require_template_literals = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/expressions.js
 var require_expressions = __commonJS({
-  "node_modules/@babel/generator/lib/generators/expressions.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/expressions.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.LogicalExpression = exports.BinaryExpression = exports.AssignmentExpression = AssignmentExpression;
-    exports.AssignmentPattern = AssignmentPattern;
-    exports.AwaitExpression = AwaitExpression;
-    exports.BindExpression = BindExpression;
-    exports.CallExpression = CallExpression;
-    exports.ConditionalExpression = ConditionalExpression;
-    exports.Decorator = Decorator;
-    exports.DoExpression = DoExpression;
-    exports.EmptyStatement = EmptyStatement;
-    exports.ExpressionStatement = ExpressionStatement;
-    exports.Import = Import;
-    exports.MemberExpression = MemberExpression;
-    exports.MetaProperty = MetaProperty;
-    exports.ModuleExpression = ModuleExpression;
-    exports.NewExpression = NewExpression;
-    exports.OptionalCallExpression = OptionalCallExpression;
-    exports.OptionalMemberExpression = OptionalMemberExpression;
-    exports.ParenthesizedExpression = ParenthesizedExpression;
-    exports.PrivateName = PrivateName;
-    exports.SequenceExpression = SequenceExpression;
-    exports.Super = Super;
-    exports.ThisExpression = ThisExpression;
-    exports.UnaryExpression = UnaryExpression;
-    exports.UpdateExpression = UpdateExpression;
-    exports.V8IntrinsicIdentifier = V8IntrinsicIdentifier;
-    exports.YieldExpression = YieldExpression;
-    exports._shouldPrintDecoratorsBeforeExport = _shouldPrintDecoratorsBeforeExport;
+    exports2.LogicalExpression = exports2.BinaryExpression = exports2.AssignmentExpression = AssignmentExpression;
+    exports2.AssignmentPattern = AssignmentPattern;
+    exports2.AwaitExpression = AwaitExpression;
+    exports2.BindExpression = BindExpression;
+    exports2.CallExpression = CallExpression;
+    exports2.ConditionalExpression = ConditionalExpression;
+    exports2.Decorator = Decorator;
+    exports2.DoExpression = DoExpression;
+    exports2.EmptyStatement = EmptyStatement;
+    exports2.ExpressionStatement = ExpressionStatement;
+    exports2.Import = Import;
+    exports2.MemberExpression = MemberExpression;
+    exports2.MetaProperty = MetaProperty;
+    exports2.ModuleExpression = ModuleExpression;
+    exports2.NewExpression = NewExpression;
+    exports2.OptionalCallExpression = OptionalCallExpression;
+    exports2.OptionalMemberExpression = OptionalMemberExpression;
+    exports2.ParenthesizedExpression = ParenthesizedExpression;
+    exports2.PrivateName = PrivateName;
+    exports2.SequenceExpression = SequenceExpression;
+    exports2.Super = Super;
+    exports2.ThisExpression = ThisExpression;
+    exports2.UnaryExpression = UnaryExpression;
+    exports2.UpdateExpression = UpdateExpression;
+    exports2.V8IntrinsicIdentifier = V8IntrinsicIdentifier;
+    exports2.YieldExpression = YieldExpression;
+    exports2._shouldPrintDecoratorsBeforeExport = _shouldPrintDecoratorsBeforeExport;
     var _t = require_lib3();
     var _index = require_node2();
     var {
@@ -38645,29 +42338,29 @@ var require_expressions = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/statements.js
 var require_statements = __commonJS({
-  "node_modules/@babel/generator/lib/generators/statements.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/statements.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.BreakStatement = BreakStatement;
-    exports.CatchClause = CatchClause;
-    exports.ContinueStatement = ContinueStatement;
-    exports.DebuggerStatement = DebuggerStatement;
-    exports.DoWhileStatement = DoWhileStatement;
-    exports.ForOfStatement = exports.ForInStatement = void 0;
-    exports.ForStatement = ForStatement;
-    exports.IfStatement = IfStatement;
-    exports.LabeledStatement = LabeledStatement;
-    exports.ReturnStatement = ReturnStatement;
-    exports.SwitchCase = SwitchCase;
-    exports.SwitchStatement = SwitchStatement;
-    exports.ThrowStatement = ThrowStatement;
-    exports.TryStatement = TryStatement;
-    exports.VariableDeclaration = VariableDeclaration;
-    exports.VariableDeclarator = VariableDeclarator;
-    exports.WhileStatement = WhileStatement;
-    exports.WithStatement = WithStatement;
+    exports2.BreakStatement = BreakStatement;
+    exports2.CatchClause = CatchClause;
+    exports2.ContinueStatement = ContinueStatement;
+    exports2.DebuggerStatement = DebuggerStatement;
+    exports2.DoWhileStatement = DoWhileStatement;
+    exports2.ForOfStatement = exports2.ForInStatement = void 0;
+    exports2.ForStatement = ForStatement;
+    exports2.IfStatement = IfStatement;
+    exports2.LabeledStatement = LabeledStatement;
+    exports2.ReturnStatement = ReturnStatement;
+    exports2.SwitchCase = SwitchCase;
+    exports2.SwitchStatement = SwitchStatement;
+    exports2.ThrowStatement = ThrowStatement;
+    exports2.TryStatement = TryStatement;
+    exports2.VariableDeclaration = VariableDeclaration;
+    exports2.VariableDeclarator = VariableDeclarator;
+    exports2.WhileStatement = WhileStatement;
+    exports2.WithStatement = WithStatement;
     var _t = require_lib3();
     var _index = require_node2();
     var {
@@ -38774,8 +42467,8 @@ var require_statements = __commonJS({
       this.tokenChar(41);
       this.printBlock(node);
     }
-    var ForInStatement = exports.ForInStatement = ForXStatement;
-    var ForOfStatement = exports.ForOfStatement = ForXStatement;
+    var ForInStatement = exports2.ForInStatement = ForXStatement;
+    var ForOfStatement = exports2.ForOfStatement = ForXStatement;
     function DoWhileStatement(node) {
       this.word("do");
       this.space();
@@ -38935,20 +42628,20 @@ var require_statements = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/classes.js
 var require_classes = __commonJS({
-  "node_modules/@babel/generator/lib/generators/classes.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/classes.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ClassAccessorProperty = ClassAccessorProperty;
-    exports.ClassBody = ClassBody;
-    exports.ClassExpression = exports.ClassDeclaration = ClassDeclaration;
-    exports.ClassMethod = ClassMethod;
-    exports.ClassPrivateMethod = ClassPrivateMethod;
-    exports.ClassPrivateProperty = ClassPrivateProperty;
-    exports.ClassProperty = ClassProperty;
-    exports.StaticBlock = StaticBlock;
-    exports._classMethodHead = _classMethodHead;
+    exports2.ClassAccessorProperty = ClassAccessorProperty;
+    exports2.ClassBody = ClassBody;
+    exports2.ClassExpression = exports2.ClassDeclaration = ClassDeclaration;
+    exports2.ClassMethod = ClassMethod;
+    exports2.ClassPrivateMethod = ClassPrivateMethod;
+    exports2.ClassPrivateProperty = ClassPrivateProperty;
+    exports2.ClassProperty = ClassProperty;
+    exports2.StaticBlock = StaticBlock;
+    exports2._classMethodHead = _classMethodHead;
     var _t = require_lib3();
     var {
       isExportDefaultDeclaration,
@@ -39155,20 +42848,20 @@ var require_classes = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/methods.js
 var require_methods = __commonJS({
-  "node_modules/@babel/generator/lib/generators/methods.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/methods.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ArrowFunctionExpression = ArrowFunctionExpression;
-    exports.FunctionDeclaration = exports.FunctionExpression = FunctionExpression;
-    exports._functionHead = _functionHead;
-    exports._methodHead = _methodHead;
-    exports._param = _param;
-    exports._parameters = _parameters;
-    exports._params = _params;
-    exports._predicate = _predicate;
-    exports._shouldPrintArrowParamsParens = _shouldPrintArrowParamsParens;
+    exports2.ArrowFunctionExpression = ArrowFunctionExpression;
+    exports2.FunctionDeclaration = exports2.FunctionExpression = FunctionExpression;
+    exports2._functionHead = _functionHead;
+    exports2._methodHead = _methodHead;
+    exports2._param = _param;
+    exports2._parameters = _parameters;
+    exports2._params = _params;
+    exports2._predicate = _predicate;
+    exports2._shouldPrintArrowParamsParens = _shouldPrintArrowParamsParens;
     var _t = require_lib3();
     var _index = require_node2();
     var {
@@ -39362,24 +43055,24 @@ var require_methods = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/modules.js
 var require_modules = __commonJS({
-  "node_modules/@babel/generator/lib/generators/modules.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/modules.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ExportAllDeclaration = ExportAllDeclaration;
-    exports.ExportDefaultDeclaration = ExportDefaultDeclaration;
-    exports.ExportDefaultSpecifier = ExportDefaultSpecifier;
-    exports.ExportNamedDeclaration = ExportNamedDeclaration;
-    exports.ExportNamespaceSpecifier = ExportNamespaceSpecifier;
-    exports.ExportSpecifier = ExportSpecifier;
-    exports.ImportAttribute = ImportAttribute;
-    exports.ImportDeclaration = ImportDeclaration;
-    exports.ImportDefaultSpecifier = ImportDefaultSpecifier;
-    exports.ImportExpression = ImportExpression;
-    exports.ImportNamespaceSpecifier = ImportNamespaceSpecifier;
-    exports.ImportSpecifier = ImportSpecifier;
-    exports._printAttributes = _printAttributes;
+    exports2.ExportAllDeclaration = ExportAllDeclaration;
+    exports2.ExportDefaultDeclaration = ExportDefaultDeclaration;
+    exports2.ExportDefaultSpecifier = ExportDefaultSpecifier;
+    exports2.ExportNamedDeclaration = ExportNamedDeclaration;
+    exports2.ExportNamespaceSpecifier = ExportNamespaceSpecifier;
+    exports2.ExportSpecifier = ExportSpecifier;
+    exports2.ImportAttribute = ImportAttribute;
+    exports2.ImportDeclaration = ImportDeclaration;
+    exports2.ImportDefaultSpecifier = ImportDefaultSpecifier;
+    exports2.ImportExpression = ImportExpression;
+    exports2.ImportNamespaceSpecifier = ImportNamespaceSpecifier;
+    exports2.ImportSpecifier = ImportSpecifier;
+    exports2._printAttributes = _printAttributes;
     var _t = require_lib3();
     var _index = require_node2();
     var {
@@ -39649,7 +43342,7 @@ Please specify the "importAttributesKeyword" generator option, whose value can b
 
 // node_modules/jsesc/jsesc.js
 var require_jsesc = __commonJS({
-  "node_modules/jsesc/jsesc.js"(exports, module) {
+  "node_modules/jsesc/jsesc.js"(exports2, module2) {
     "use strict";
     var object2 = {};
     var hasOwnProperty2 = object2.hasOwnProperty;
@@ -39921,37 +43614,37 @@ var require_jsesc = __commonJS({
       return result;
     };
     jsesc.version = "3.0.2";
-    module.exports = jsesc;
+    module2.exports = jsesc;
   }
 });
 
 // node_modules/@babel/generator/lib/generators/types.js
 var require_types = __commonJS({
-  "node_modules/@babel/generator/lib/generators/types.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/types.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ArgumentPlaceholder = ArgumentPlaceholder;
-    exports.ArrayPattern = exports.ArrayExpression = ArrayExpression;
-    exports.BigIntLiteral = BigIntLiteral;
-    exports.BooleanLiteral = BooleanLiteral;
-    exports.Identifier = Identifier;
-    exports.NullLiteral = NullLiteral;
-    exports.NumericLiteral = NumericLiteral;
-    exports.ObjectPattern = exports.ObjectExpression = ObjectExpression;
-    exports.ObjectMethod = ObjectMethod;
-    exports.ObjectProperty = ObjectProperty;
-    exports.PipelineBareFunction = PipelineBareFunction;
-    exports.PipelinePrimaryTopicReference = PipelinePrimaryTopicReference;
-    exports.PipelineTopicExpression = PipelineTopicExpression;
-    exports.RecordExpression = RecordExpression;
-    exports.RegExpLiteral = RegExpLiteral;
-    exports.SpreadElement = exports.RestElement = RestElement;
-    exports.StringLiteral = StringLiteral;
-    exports.TopicReference = TopicReference;
-    exports.TupleExpression = TupleExpression;
-    exports._getRawIdentifier = _getRawIdentifier;
+    exports2.ArgumentPlaceholder = ArgumentPlaceholder;
+    exports2.ArrayPattern = exports2.ArrayExpression = ArrayExpression;
+    exports2.BigIntLiteral = BigIntLiteral;
+    exports2.BooleanLiteral = BooleanLiteral;
+    exports2.Identifier = Identifier;
+    exports2.NullLiteral = NullLiteral;
+    exports2.NumericLiteral = NumericLiteral;
+    exports2.ObjectPattern = exports2.ObjectExpression = ObjectExpression;
+    exports2.ObjectMethod = ObjectMethod;
+    exports2.ObjectProperty = ObjectProperty;
+    exports2.PipelineBareFunction = PipelineBareFunction;
+    exports2.PipelinePrimaryTopicReference = PipelinePrimaryTopicReference;
+    exports2.PipelineTopicExpression = PipelineTopicExpression;
+    exports2.RecordExpression = RecordExpression;
+    exports2.RegExpLiteral = RegExpLiteral;
+    exports2.SpreadElement = exports2.RestElement = RestElement;
+    exports2.StringLiteral = StringLiteral;
+    exports2.TopicReference = TopicReference;
+    exports2.TupleExpression = TupleExpression;
+    exports2._getRawIdentifier = _getRawIdentifier;
     var _t = require_lib3();
     var _jsesc = require_jsesc();
     var {
@@ -40167,85 +43860,85 @@ var require_types = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/flow.js
 var require_flow2 = __commonJS({
-  "node_modules/@babel/generator/lib/generators/flow.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/flow.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.AnyTypeAnnotation = AnyTypeAnnotation;
-    exports.ArrayTypeAnnotation = ArrayTypeAnnotation;
-    exports.BooleanLiteralTypeAnnotation = BooleanLiteralTypeAnnotation;
-    exports.BooleanTypeAnnotation = BooleanTypeAnnotation;
-    exports.DeclareClass = DeclareClass;
-    exports.DeclareExportAllDeclaration = DeclareExportAllDeclaration;
-    exports.DeclareExportDeclaration = DeclareExportDeclaration;
-    exports.DeclareFunction = DeclareFunction;
-    exports.DeclareInterface = DeclareInterface;
-    exports.DeclareModule = DeclareModule;
-    exports.DeclareModuleExports = DeclareModuleExports;
-    exports.DeclareOpaqueType = DeclareOpaqueType;
-    exports.DeclareTypeAlias = DeclareTypeAlias;
-    exports.DeclareVariable = DeclareVariable;
-    exports.DeclaredPredicate = DeclaredPredicate;
-    exports.EmptyTypeAnnotation = EmptyTypeAnnotation;
-    exports.EnumBooleanBody = EnumBooleanBody;
-    exports.EnumBooleanMember = EnumBooleanMember;
-    exports.EnumDeclaration = EnumDeclaration;
-    exports.EnumDefaultedMember = EnumDefaultedMember;
-    exports.EnumNumberBody = EnumNumberBody;
-    exports.EnumNumberMember = EnumNumberMember;
-    exports.EnumStringBody = EnumStringBody;
-    exports.EnumStringMember = EnumStringMember;
-    exports.EnumSymbolBody = EnumSymbolBody;
-    exports.ExistsTypeAnnotation = ExistsTypeAnnotation;
-    exports.FunctionTypeAnnotation = FunctionTypeAnnotation;
-    exports.FunctionTypeParam = FunctionTypeParam;
-    exports.IndexedAccessType = IndexedAccessType;
-    exports.InferredPredicate = InferredPredicate;
-    exports.InterfaceDeclaration = InterfaceDeclaration;
-    exports.GenericTypeAnnotation = exports.ClassImplements = exports.InterfaceExtends = InterfaceExtends;
-    exports.InterfaceTypeAnnotation = InterfaceTypeAnnotation;
-    exports.IntersectionTypeAnnotation = IntersectionTypeAnnotation;
-    exports.MixedTypeAnnotation = MixedTypeAnnotation;
-    exports.NullLiteralTypeAnnotation = NullLiteralTypeAnnotation;
-    exports.NullableTypeAnnotation = NullableTypeAnnotation;
-    Object.defineProperty(exports, "NumberLiteralTypeAnnotation", {
+    exports2.AnyTypeAnnotation = AnyTypeAnnotation;
+    exports2.ArrayTypeAnnotation = ArrayTypeAnnotation;
+    exports2.BooleanLiteralTypeAnnotation = BooleanLiteralTypeAnnotation;
+    exports2.BooleanTypeAnnotation = BooleanTypeAnnotation;
+    exports2.DeclareClass = DeclareClass;
+    exports2.DeclareExportAllDeclaration = DeclareExportAllDeclaration;
+    exports2.DeclareExportDeclaration = DeclareExportDeclaration;
+    exports2.DeclareFunction = DeclareFunction;
+    exports2.DeclareInterface = DeclareInterface;
+    exports2.DeclareModule = DeclareModule;
+    exports2.DeclareModuleExports = DeclareModuleExports;
+    exports2.DeclareOpaqueType = DeclareOpaqueType;
+    exports2.DeclareTypeAlias = DeclareTypeAlias;
+    exports2.DeclareVariable = DeclareVariable;
+    exports2.DeclaredPredicate = DeclaredPredicate;
+    exports2.EmptyTypeAnnotation = EmptyTypeAnnotation;
+    exports2.EnumBooleanBody = EnumBooleanBody;
+    exports2.EnumBooleanMember = EnumBooleanMember;
+    exports2.EnumDeclaration = EnumDeclaration;
+    exports2.EnumDefaultedMember = EnumDefaultedMember;
+    exports2.EnumNumberBody = EnumNumberBody;
+    exports2.EnumNumberMember = EnumNumberMember;
+    exports2.EnumStringBody = EnumStringBody;
+    exports2.EnumStringMember = EnumStringMember;
+    exports2.EnumSymbolBody = EnumSymbolBody;
+    exports2.ExistsTypeAnnotation = ExistsTypeAnnotation;
+    exports2.FunctionTypeAnnotation = FunctionTypeAnnotation;
+    exports2.FunctionTypeParam = FunctionTypeParam;
+    exports2.IndexedAccessType = IndexedAccessType;
+    exports2.InferredPredicate = InferredPredicate;
+    exports2.InterfaceDeclaration = InterfaceDeclaration;
+    exports2.GenericTypeAnnotation = exports2.ClassImplements = exports2.InterfaceExtends = InterfaceExtends;
+    exports2.InterfaceTypeAnnotation = InterfaceTypeAnnotation;
+    exports2.IntersectionTypeAnnotation = IntersectionTypeAnnotation;
+    exports2.MixedTypeAnnotation = MixedTypeAnnotation;
+    exports2.NullLiteralTypeAnnotation = NullLiteralTypeAnnotation;
+    exports2.NullableTypeAnnotation = NullableTypeAnnotation;
+    Object.defineProperty(exports2, "NumberLiteralTypeAnnotation", {
       enumerable: true,
       get: function() {
         return _types2.NumericLiteral;
       }
     });
-    exports.NumberTypeAnnotation = NumberTypeAnnotation;
-    exports.ObjectTypeAnnotation = ObjectTypeAnnotation;
-    exports.ObjectTypeCallProperty = ObjectTypeCallProperty;
-    exports.ObjectTypeIndexer = ObjectTypeIndexer;
-    exports.ObjectTypeInternalSlot = ObjectTypeInternalSlot;
-    exports.ObjectTypeProperty = ObjectTypeProperty;
-    exports.ObjectTypeSpreadProperty = ObjectTypeSpreadProperty;
-    exports.OpaqueType = OpaqueType;
-    exports.OptionalIndexedAccessType = OptionalIndexedAccessType;
-    exports.QualifiedTypeIdentifier = QualifiedTypeIdentifier;
-    Object.defineProperty(exports, "StringLiteralTypeAnnotation", {
+    exports2.NumberTypeAnnotation = NumberTypeAnnotation;
+    exports2.ObjectTypeAnnotation = ObjectTypeAnnotation;
+    exports2.ObjectTypeCallProperty = ObjectTypeCallProperty;
+    exports2.ObjectTypeIndexer = ObjectTypeIndexer;
+    exports2.ObjectTypeInternalSlot = ObjectTypeInternalSlot;
+    exports2.ObjectTypeProperty = ObjectTypeProperty;
+    exports2.ObjectTypeSpreadProperty = ObjectTypeSpreadProperty;
+    exports2.OpaqueType = OpaqueType;
+    exports2.OptionalIndexedAccessType = OptionalIndexedAccessType;
+    exports2.QualifiedTypeIdentifier = QualifiedTypeIdentifier;
+    Object.defineProperty(exports2, "StringLiteralTypeAnnotation", {
       enumerable: true,
       get: function() {
         return _types2.StringLiteral;
       }
     });
-    exports.StringTypeAnnotation = StringTypeAnnotation;
-    exports.SymbolTypeAnnotation = SymbolTypeAnnotation;
-    exports.ThisTypeAnnotation = ThisTypeAnnotation;
-    exports.TupleTypeAnnotation = TupleTypeAnnotation;
-    exports.TypeAlias = TypeAlias;
-    exports.TypeAnnotation = TypeAnnotation;
-    exports.TypeCastExpression = TypeCastExpression;
-    exports.TypeParameter = TypeParameter;
-    exports.TypeParameterDeclaration = exports.TypeParameterInstantiation = TypeParameterInstantiation;
-    exports.TypeofTypeAnnotation = TypeofTypeAnnotation;
-    exports.UnionTypeAnnotation = UnionTypeAnnotation;
-    exports.Variance = Variance;
-    exports.VoidTypeAnnotation = VoidTypeAnnotation;
-    exports._interfaceish = _interfaceish;
-    exports._variance = _variance;
+    exports2.StringTypeAnnotation = StringTypeAnnotation;
+    exports2.SymbolTypeAnnotation = SymbolTypeAnnotation;
+    exports2.ThisTypeAnnotation = ThisTypeAnnotation;
+    exports2.TupleTypeAnnotation = TupleTypeAnnotation;
+    exports2.TypeAlias = TypeAlias;
+    exports2.TypeAnnotation = TypeAnnotation;
+    exports2.TypeCastExpression = TypeCastExpression;
+    exports2.TypeParameter = TypeParameter;
+    exports2.TypeParameterDeclaration = exports2.TypeParameterInstantiation = TypeParameterInstantiation;
+    exports2.TypeofTypeAnnotation = TypeofTypeAnnotation;
+    exports2.UnionTypeAnnotation = UnionTypeAnnotation;
+    exports2.Variance = Variance;
+    exports2.VoidTypeAnnotation = VoidTypeAnnotation;
+    exports2._interfaceish = _interfaceish;
+    exports2._variance = _variance;
     var _t = require_lib3();
     var _modules = require_modules();
     var _index = require_node2();
@@ -40835,18 +44528,18 @@ var require_flow2 = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/base.js
 var require_base = __commonJS({
-  "node_modules/@babel/generator/lib/generators/base.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/base.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.BlockStatement = BlockStatement;
-    exports.Directive = Directive;
-    exports.DirectiveLiteral = DirectiveLiteral;
-    exports.File = File2;
-    exports.InterpreterDirective = InterpreterDirective;
-    exports.Placeholder = Placeholder2;
-    exports.Program = Program;
+    exports2.BlockStatement = BlockStatement;
+    exports2.Directive = Directive;
+    exports2.DirectiveLiteral = DirectiveLiteral;
+    exports2.File = File2;
+    exports2.InterpreterDirective = InterpreterDirective;
+    exports2.Placeholder = Placeholder2;
+    exports2.Program = Program;
     function File2(node) {
       if (node.program) {
         this.print(node.program.interpreter);
@@ -40925,26 +44618,26 @@ var require_base = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/jsx.js
 var require_jsx2 = __commonJS({
-  "node_modules/@babel/generator/lib/generators/jsx.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/jsx.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.JSXAttribute = JSXAttribute;
-    exports.JSXClosingElement = JSXClosingElement;
-    exports.JSXClosingFragment = JSXClosingFragment;
-    exports.JSXElement = JSXElement;
-    exports.JSXEmptyExpression = JSXEmptyExpression;
-    exports.JSXExpressionContainer = JSXExpressionContainer;
-    exports.JSXFragment = JSXFragment;
-    exports.JSXIdentifier = JSXIdentifier;
-    exports.JSXMemberExpression = JSXMemberExpression;
-    exports.JSXNamespacedName = JSXNamespacedName;
-    exports.JSXOpeningElement = JSXOpeningElement;
-    exports.JSXOpeningFragment = JSXOpeningFragment;
-    exports.JSXSpreadAttribute = JSXSpreadAttribute;
-    exports.JSXSpreadChild = JSXSpreadChild;
-    exports.JSXText = JSXText;
+    exports2.JSXAttribute = JSXAttribute;
+    exports2.JSXClosingElement = JSXClosingElement;
+    exports2.JSXClosingFragment = JSXClosingFragment;
+    exports2.JSXElement = JSXElement;
+    exports2.JSXEmptyExpression = JSXEmptyExpression;
+    exports2.JSXExpressionContainer = JSXExpressionContainer;
+    exports2.JSXFragment = JSXFragment;
+    exports2.JSXIdentifier = JSXIdentifier;
+    exports2.JSXMemberExpression = JSXMemberExpression;
+    exports2.JSXNamespacedName = JSXNamespacedName;
+    exports2.JSXOpeningElement = JSXOpeningElement;
+    exports2.JSXOpeningFragment = JSXOpeningFragment;
+    exports2.JSXSpreadAttribute = JSXSpreadAttribute;
+    exports2.JSXSpreadChild = JSXSpreadChild;
+    exports2.JSXText = JSXText;
     function JSXAttribute(node) {
       this.print(node.name);
       if (node.value) {
@@ -41055,80 +44748,80 @@ var require_jsx2 = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/typescript.js
 var require_typescript2 = __commonJS({
-  "node_modules/@babel/generator/lib/generators/typescript.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/typescript.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.TSAnyKeyword = TSAnyKeyword;
-    exports.TSArrayType = TSArrayType;
-    exports.TSSatisfiesExpression = exports.TSAsExpression = TSTypeExpression;
-    exports.TSBigIntKeyword = TSBigIntKeyword;
-    exports.TSBooleanKeyword = TSBooleanKeyword;
-    exports.TSCallSignatureDeclaration = TSCallSignatureDeclaration;
-    exports.TSInterfaceHeritage = exports.TSClassImplements = TSClassImplements;
-    exports.TSConditionalType = TSConditionalType;
-    exports.TSConstructSignatureDeclaration = TSConstructSignatureDeclaration;
-    exports.TSConstructorType = TSConstructorType;
-    exports.TSDeclareFunction = TSDeclareFunction;
-    exports.TSDeclareMethod = TSDeclareMethod;
-    exports.TSEnumBody = TSEnumBody;
-    exports.TSEnumDeclaration = TSEnumDeclaration;
-    exports.TSEnumMember = TSEnumMember;
-    exports.TSExportAssignment = TSExportAssignment;
-    exports.TSExternalModuleReference = TSExternalModuleReference;
-    exports.TSFunctionType = TSFunctionType;
-    exports.TSImportEqualsDeclaration = TSImportEqualsDeclaration;
-    exports.TSImportType = TSImportType;
-    exports.TSIndexSignature = TSIndexSignature;
-    exports.TSIndexedAccessType = TSIndexedAccessType;
-    exports.TSInferType = TSInferType;
-    exports.TSInstantiationExpression = TSInstantiationExpression;
-    exports.TSInterfaceBody = TSInterfaceBody;
-    exports.TSInterfaceDeclaration = TSInterfaceDeclaration;
-    exports.TSIntersectionType = TSIntersectionType;
-    exports.TSIntrinsicKeyword = TSIntrinsicKeyword;
-    exports.TSLiteralType = TSLiteralType;
-    exports.TSMappedType = TSMappedType;
-    exports.TSMethodSignature = TSMethodSignature;
-    exports.TSModuleBlock = TSModuleBlock;
-    exports.TSModuleDeclaration = TSModuleDeclaration;
-    exports.TSNamedTupleMember = TSNamedTupleMember;
-    exports.TSNamespaceExportDeclaration = TSNamespaceExportDeclaration;
-    exports.TSNeverKeyword = TSNeverKeyword;
-    exports.TSNonNullExpression = TSNonNullExpression;
-    exports.TSNullKeyword = TSNullKeyword;
-    exports.TSNumberKeyword = TSNumberKeyword;
-    exports.TSObjectKeyword = TSObjectKeyword;
-    exports.TSOptionalType = TSOptionalType;
-    exports.TSParameterProperty = TSParameterProperty;
-    exports.TSParenthesizedType = TSParenthesizedType;
-    exports.TSPropertySignature = TSPropertySignature;
-    exports.TSQualifiedName = TSQualifiedName;
-    exports.TSRestType = TSRestType;
-    exports.TSStringKeyword = TSStringKeyword;
-    exports.TSSymbolKeyword = TSSymbolKeyword;
-    exports.TSTemplateLiteralType = TSTemplateLiteralType;
-    exports.TSThisType = TSThisType;
-    exports.TSTupleType = TSTupleType;
-    exports.TSTypeAliasDeclaration = TSTypeAliasDeclaration;
-    exports.TSTypeAnnotation = TSTypeAnnotation;
-    exports.TSTypeAssertion = TSTypeAssertion;
-    exports.TSTypeLiteral = TSTypeLiteral;
-    exports.TSTypeOperator = TSTypeOperator;
-    exports.TSTypeParameter = TSTypeParameter;
-    exports.TSTypeParameterDeclaration = exports.TSTypeParameterInstantiation = TSTypeParameterInstantiation;
-    exports.TSTypePredicate = TSTypePredicate;
-    exports.TSTypeQuery = TSTypeQuery;
-    exports.TSTypeReference = TSTypeReference;
-    exports.TSUndefinedKeyword = TSUndefinedKeyword;
-    exports.TSUnionType = TSUnionType;
-    exports.TSUnknownKeyword = TSUnknownKeyword;
-    exports.TSVoidKeyword = TSVoidKeyword;
-    exports.tsPrintClassMemberModifiers = tsPrintClassMemberModifiers;
-    exports.tsPrintFunctionOrConstructorType = tsPrintFunctionOrConstructorType;
-    exports.tsPrintPropertyOrMethodName = tsPrintPropertyOrMethodName;
-    exports.tsPrintSignatureDeclarationBase = tsPrintSignatureDeclarationBase;
+    exports2.TSAnyKeyword = TSAnyKeyword;
+    exports2.TSArrayType = TSArrayType;
+    exports2.TSSatisfiesExpression = exports2.TSAsExpression = TSTypeExpression;
+    exports2.TSBigIntKeyword = TSBigIntKeyword;
+    exports2.TSBooleanKeyword = TSBooleanKeyword;
+    exports2.TSCallSignatureDeclaration = TSCallSignatureDeclaration;
+    exports2.TSInterfaceHeritage = exports2.TSClassImplements = TSClassImplements;
+    exports2.TSConditionalType = TSConditionalType;
+    exports2.TSConstructSignatureDeclaration = TSConstructSignatureDeclaration;
+    exports2.TSConstructorType = TSConstructorType;
+    exports2.TSDeclareFunction = TSDeclareFunction;
+    exports2.TSDeclareMethod = TSDeclareMethod;
+    exports2.TSEnumBody = TSEnumBody;
+    exports2.TSEnumDeclaration = TSEnumDeclaration;
+    exports2.TSEnumMember = TSEnumMember;
+    exports2.TSExportAssignment = TSExportAssignment;
+    exports2.TSExternalModuleReference = TSExternalModuleReference;
+    exports2.TSFunctionType = TSFunctionType;
+    exports2.TSImportEqualsDeclaration = TSImportEqualsDeclaration;
+    exports2.TSImportType = TSImportType;
+    exports2.TSIndexSignature = TSIndexSignature;
+    exports2.TSIndexedAccessType = TSIndexedAccessType;
+    exports2.TSInferType = TSInferType;
+    exports2.TSInstantiationExpression = TSInstantiationExpression;
+    exports2.TSInterfaceBody = TSInterfaceBody;
+    exports2.TSInterfaceDeclaration = TSInterfaceDeclaration;
+    exports2.TSIntersectionType = TSIntersectionType;
+    exports2.TSIntrinsicKeyword = TSIntrinsicKeyword;
+    exports2.TSLiteralType = TSLiteralType;
+    exports2.TSMappedType = TSMappedType;
+    exports2.TSMethodSignature = TSMethodSignature;
+    exports2.TSModuleBlock = TSModuleBlock;
+    exports2.TSModuleDeclaration = TSModuleDeclaration;
+    exports2.TSNamedTupleMember = TSNamedTupleMember;
+    exports2.TSNamespaceExportDeclaration = TSNamespaceExportDeclaration;
+    exports2.TSNeverKeyword = TSNeverKeyword;
+    exports2.TSNonNullExpression = TSNonNullExpression;
+    exports2.TSNullKeyword = TSNullKeyword;
+    exports2.TSNumberKeyword = TSNumberKeyword;
+    exports2.TSObjectKeyword = TSObjectKeyword;
+    exports2.TSOptionalType = TSOptionalType;
+    exports2.TSParameterProperty = TSParameterProperty;
+    exports2.TSParenthesizedType = TSParenthesizedType;
+    exports2.TSPropertySignature = TSPropertySignature;
+    exports2.TSQualifiedName = TSQualifiedName;
+    exports2.TSRestType = TSRestType;
+    exports2.TSStringKeyword = TSStringKeyword;
+    exports2.TSSymbolKeyword = TSSymbolKeyword;
+    exports2.TSTemplateLiteralType = TSTemplateLiteralType;
+    exports2.TSThisType = TSThisType;
+    exports2.TSTupleType = TSTupleType;
+    exports2.TSTypeAliasDeclaration = TSTypeAliasDeclaration;
+    exports2.TSTypeAnnotation = TSTypeAnnotation;
+    exports2.TSTypeAssertion = TSTypeAssertion;
+    exports2.TSTypeLiteral = TSTypeLiteral;
+    exports2.TSTypeOperator = TSTypeOperator;
+    exports2.TSTypeParameter = TSTypeParameter;
+    exports2.TSTypeParameterDeclaration = exports2.TSTypeParameterInstantiation = TSTypeParameterInstantiation;
+    exports2.TSTypePredicate = TSTypePredicate;
+    exports2.TSTypeQuery = TSTypeQuery;
+    exports2.TSTypeReference = TSTypeReference;
+    exports2.TSUndefinedKeyword = TSUndefinedKeyword;
+    exports2.TSUnionType = TSUnionType;
+    exports2.TSUnknownKeyword = TSUnknownKeyword;
+    exports2.TSVoidKeyword = TSVoidKeyword;
+    exports2.tsPrintClassMemberModifiers = tsPrintClassMemberModifiers;
+    exports2.tsPrintFunctionOrConstructorType = tsPrintFunctionOrConstructorType;
+    exports2.tsPrintPropertyOrMethodName = tsPrintPropertyOrMethodName;
+    exports2.tsPrintSignatureDeclarationBase = tsPrintSignatureDeclarationBase;
     function TSTypeAnnotation(node, parent) {
       this.token((parent.type === "TSFunctionType" || parent.type === "TSConstructorType") && parent.typeAnnotation === node ? "=>" : ":");
       this.space();
@@ -41785,18 +45478,18 @@ var require_typescript2 = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/index.js
 var require_generators = __commonJS({
-  "node_modules/@babel/generator/lib/generators/index.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
     var _templateLiterals = require_template_literals();
     Object.keys(_templateLiterals).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _templateLiterals[key])
+      if (key in exports2 && exports2[key] === _templateLiterals[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _templateLiterals[key];
@@ -41807,9 +45500,9 @@ var require_generators = __commonJS({
     Object.keys(_expressions).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _expressions[key])
+      if (key in exports2 && exports2[key] === _expressions[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _expressions[key];
@@ -41820,9 +45513,9 @@ var require_generators = __commonJS({
     Object.keys(_statements).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _statements[key])
+      if (key in exports2 && exports2[key] === _statements[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _statements[key];
@@ -41833,9 +45526,9 @@ var require_generators = __commonJS({
     Object.keys(_classes).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _classes[key])
+      if (key in exports2 && exports2[key] === _classes[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _classes[key];
@@ -41846,9 +45539,9 @@ var require_generators = __commonJS({
     Object.keys(_methods).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _methods[key])
+      if (key in exports2 && exports2[key] === _methods[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _methods[key];
@@ -41859,9 +45552,9 @@ var require_generators = __commonJS({
     Object.keys(_modules).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _modules[key])
+      if (key in exports2 && exports2[key] === _modules[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _modules[key];
@@ -41872,9 +45565,9 @@ var require_generators = __commonJS({
     Object.keys(_types).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _types[key])
+      if (key in exports2 && exports2[key] === _types[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _types[key];
@@ -41885,9 +45578,9 @@ var require_generators = __commonJS({
     Object.keys(_flow).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _flow[key])
+      if (key in exports2 && exports2[key] === _flow[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _flow[key];
@@ -41898,9 +45591,9 @@ var require_generators = __commonJS({
     Object.keys(_base).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _base[key])
+      if (key in exports2 && exports2[key] === _base[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _base[key];
@@ -41911,9 +45604,9 @@ var require_generators = __commonJS({
     Object.keys(_jsx).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _jsx[key])
+      if (key in exports2 && exports2[key] === _jsx[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _jsx[key];
@@ -41924,9 +45617,9 @@ var require_generators = __commonJS({
     Object.keys(_typescript).forEach(function(key) {
       if (key === "default" || key === "__esModule")
         return;
-      if (key in exports && exports[key] === _typescript[key])
+      if (key in exports2 && exports2[key] === _typescript[key])
         return;
-      Object.defineProperty(exports, key, {
+      Object.defineProperty(exports2, key, {
         enumerable: true,
         get: function() {
           return _typescript[key];
@@ -41938,12 +45631,12 @@ var require_generators = __commonJS({
 
 // node_modules/@babel/generator/lib/generators/deprecated.js
 var require_deprecated = __commonJS({
-  "node_modules/@babel/generator/lib/generators/deprecated.js"(exports) {
+  "node_modules/@babel/generator/lib/generators/deprecated.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.addDeprecatedGenerators = addDeprecatedGenerators;
+    exports2.addDeprecatedGenerators = addDeprecatedGenerators;
     function addDeprecatedGenerators(PrinterClass) {
       {
         const deprecatedBabel7Generators = {
@@ -41970,12 +45663,12 @@ var require_deprecated = __commonJS({
 
 // node_modules/@babel/generator/lib/printer.js
 var require_printer = __commonJS({
-  "node_modules/@babel/generator/lib/printer.js"(exports) {
+  "node_modules/@babel/generator/lib/printer.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _buffer = require_buffer();
     var n = require_node2();
     var _t = require_lib3();
@@ -42786,7 +46479,7 @@ ${" ".repeat(indentSize)}`);
     {
       (0, _deprecated.addDeprecatedGenerators)(Printer);
     }
-    var _default3 = exports.default = Printer;
+    var _default3 = exports2.default = Printer;
     function commaSeparator(occurrenceCount, last) {
       this.token(",", false, occurrenceCount);
       if (!last)
@@ -42797,13 +46490,13 @@ ${" ".repeat(indentSize)}`);
 
 // node_modules/@babel/generator/lib/index.js
 var require_lib8 = __commonJS({
-  "node_modules/@babel/generator/lib/index.js"(exports) {
+  "node_modules/@babel/generator/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
-    exports.generate = generate;
+    exports2.default = void 0;
+    exports2.generate = generate;
     var _sourceMap = require_source_map();
     var _printer = require_printer();
     function normalizeOptions(code, opts, ast) {
@@ -42885,7 +46578,7 @@ var require_lib8 = __commonJS({
       return format;
     }
     {
-      exports.CodeGenerator = class CodeGenerator {
+      exports2.CodeGenerator = class CodeGenerator {
         constructor(ast, opts = {}, code) {
           this._ast = void 0;
           this._format = void 0;
@@ -42906,27 +46599,27 @@ var require_lib8 = __commonJS({
       const printer = new _printer.default(format, map2, ast.tokens, typeof code === "string" ? code : null);
       return printer.generate(ast);
     }
-    var _default3 = exports.default = generate;
+    var _default3 = exports2.default = generate;
   }
 });
 
 // node_modules/@babel/traverse/lib/path/ancestry.js
 var require_ancestry = __commonJS({
-  "node_modules/@babel/traverse/lib/path/ancestry.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/ancestry.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.find = find;
-    exports.findParent = findParent;
-    exports.getAncestry = getAncestry;
-    exports.getDeepestCommonAncestorFrom = getDeepestCommonAncestorFrom;
-    exports.getEarliestCommonAncestorFrom = getEarliestCommonAncestorFrom;
-    exports.getFunctionParent = getFunctionParent;
-    exports.getStatementParent = getStatementParent;
-    exports.inType = inType;
-    exports.isAncestor = isAncestor;
-    exports.isDescendant = isDescendant;
+    exports2.find = find;
+    exports2.findParent = findParent;
+    exports2.getAncestry = getAncestry;
+    exports2.getDeepestCommonAncestorFrom = getDeepestCommonAncestorFrom;
+    exports2.getEarliestCommonAncestorFrom = getEarliestCommonAncestorFrom;
+    exports2.getFunctionParent = getFunctionParent;
+    exports2.getStatementParent = getStatementParent;
+    exports2.inType = inType;
+    exports2.isAncestor = isAncestor;
+    exports2.isDescendant = isDescendant;
     var _t = require_lib3();
     var {
       VISITOR_KEYS
@@ -43058,12 +46751,12 @@ var require_ancestry = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/inference/util.js
 var require_util = __commonJS({
-  "node_modules/@babel/traverse/lib/path/inference/util.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/inference/util.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.createUnionType = createUnionType;
+    exports2.createUnionType = createUnionType;
     var _t = require_lib3();
     var {
       createFlowUnionType,
@@ -43091,12 +46784,12 @@ var require_util = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/inference/inferer-reference.js
 var require_inferer_reference = __commonJS({
-  "node_modules/@babel/traverse/lib/path/inference/inferer-reference.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/inference/inferer-reference.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = _default3;
+    exports2.default = _default3;
     var _t = require_lib3();
     var _util = require_util();
     var {
@@ -43256,42 +46949,42 @@ var require_inferer_reference = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/inference/inferers.js
 var require_inferers = __commonJS({
-  "node_modules/@babel/traverse/lib/path/inference/inferers.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/inference/inferers.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ArrayExpression = ArrayExpression;
-    exports.AssignmentExpression = AssignmentExpression;
-    exports.BinaryExpression = BinaryExpression;
-    exports.BooleanLiteral = BooleanLiteral;
-    exports.CallExpression = CallExpression;
-    exports.ConditionalExpression = ConditionalExpression;
-    exports.ClassDeclaration = exports.ClassExpression = exports.FunctionDeclaration = exports.ArrowFunctionExpression = exports.FunctionExpression = Func;
-    Object.defineProperty(exports, "Identifier", {
+    exports2.ArrayExpression = ArrayExpression;
+    exports2.AssignmentExpression = AssignmentExpression;
+    exports2.BinaryExpression = BinaryExpression;
+    exports2.BooleanLiteral = BooleanLiteral;
+    exports2.CallExpression = CallExpression;
+    exports2.ConditionalExpression = ConditionalExpression;
+    exports2.ClassDeclaration = exports2.ClassExpression = exports2.FunctionDeclaration = exports2.ArrowFunctionExpression = exports2.FunctionExpression = Func;
+    Object.defineProperty(exports2, "Identifier", {
       enumerable: true,
       get: function() {
         return _infererReference.default;
       }
     });
-    exports.LogicalExpression = LogicalExpression;
-    exports.NewExpression = NewExpression;
-    exports.NullLiteral = NullLiteral;
-    exports.NumericLiteral = NumericLiteral;
-    exports.ObjectExpression = ObjectExpression;
-    exports.ParenthesizedExpression = ParenthesizedExpression;
-    exports.RegExpLiteral = RegExpLiteral;
-    exports.RestElement = RestElement;
-    exports.SequenceExpression = SequenceExpression;
-    exports.StringLiteral = StringLiteral;
-    exports.TSAsExpression = TSAsExpression;
-    exports.TSNonNullExpression = TSNonNullExpression;
-    exports.TaggedTemplateExpression = TaggedTemplateExpression;
-    exports.TemplateLiteral = TemplateLiteral;
-    exports.TypeCastExpression = TypeCastExpression;
-    exports.UnaryExpression = UnaryExpression;
-    exports.UpdateExpression = UpdateExpression;
-    exports.VariableDeclarator = VariableDeclarator;
+    exports2.LogicalExpression = LogicalExpression;
+    exports2.NewExpression = NewExpression;
+    exports2.NullLiteral = NullLiteral;
+    exports2.NumericLiteral = NumericLiteral;
+    exports2.ObjectExpression = ObjectExpression;
+    exports2.ParenthesizedExpression = ParenthesizedExpression;
+    exports2.RegExpLiteral = RegExpLiteral;
+    exports2.RestElement = RestElement;
+    exports2.SequenceExpression = SequenceExpression;
+    exports2.StringLiteral = StringLiteral;
+    exports2.TSAsExpression = TSAsExpression;
+    exports2.TSNonNullExpression = TSNonNullExpression;
+    exports2.TaggedTemplateExpression = TaggedTemplateExpression;
+    exports2.TemplateLiteral = TemplateLiteral;
+    exports2.TypeCastExpression = TypeCastExpression;
+    exports2.UnaryExpression = UnaryExpression;
+    exports2.UpdateExpression = UpdateExpression;
+    exports2.VariableDeclarator = VariableDeclarator;
     var _t = require_lib3();
     var _infererReference = require_inferer_reference();
     var _util = require_util();
@@ -43468,17 +47161,17 @@ var require_inferers = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/inference/index.js
 var require_inference = __commonJS({
-  "node_modules/@babel/traverse/lib/path/inference/index.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/inference/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._getTypeAnnotation = _getTypeAnnotation;
-    exports.baseTypeStrictlyMatches = baseTypeStrictlyMatches;
-    exports.couldBeBaseType = couldBeBaseType;
-    exports.getTypeAnnotation = getTypeAnnotation;
-    exports.isBaseType = isBaseType;
-    exports.isGenericType = isGenericType;
+    exports2._getTypeAnnotation = _getTypeAnnotation;
+    exports2.baseTypeStrictlyMatches = baseTypeStrictlyMatches;
+    exports2.couldBeBaseType = couldBeBaseType;
+    exports2.getTypeAnnotation = getTypeAnnotation;
+    exports2.isBaseType = isBaseType;
+    exports2.isGenericType = isGenericType;
     var inferers = require_inferers();
     var _t = require_lib3();
     var {
@@ -43621,13 +47314,13 @@ var require_inference = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/lib/removal-hooks.js
 var require_removal_hooks = __commonJS({
-  "node_modules/@babel/traverse/lib/path/lib/removal-hooks.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/lib/removal-hooks.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.hooks = void 0;
-    var hooks = exports.hooks = [function(self2, parent) {
+    exports2.hooks = void 0;
+    var hooks = exports2.hooks = [function(self2, parent) {
       const removeParent = self2.key === "test" && (parent.isWhile() || parent.isSwitchCase()) || self2.key === "declaration" && parent.isExportDeclaration() || self2.key === "body" && parent.isLabeledStatement() || self2.listKey === "declarations" && parent.isVariableDeclaration() && parent.node.declarations.length === 1 || self2.key === "expression" && parent.isExpressionStatement();
       if (removeParent) {
         parent.remove();
@@ -43661,17 +47354,17 @@ var require_removal_hooks = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/removal.js
 var require_removal = __commonJS({
-  "node_modules/@babel/traverse/lib/path/removal.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/removal.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._assertUnremoved = _assertUnremoved;
-    exports._callRemovalHooks = _callRemovalHooks;
-    exports._markRemoved = _markRemoved;
-    exports._remove = _remove;
-    exports._removeFromScope = _removeFromScope;
-    exports.remove = remove;
+    exports2._assertUnremoved = _assertUnremoved;
+    exports2._callRemovalHooks = _callRemovalHooks;
+    exports2._markRemoved = _markRemoved;
+    exports2._remove = _remove;
+    exports2._removeFromScope = _removeFromScope;
+    exports2.remove = remove;
     var _removalHooks = require_removal_hooks();
     var _cache = require_cache();
     var _replacement = require_replacement();
@@ -43735,12 +47428,12 @@ var require_removal = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/lib/hoister.js
 var require_hoister = __commonJS({
-  "node_modules/@babel/traverse/lib/path/lib/hoister.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/lib/hoister.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _t = require_lib3();
     var _t2 = _t;
     var {
@@ -43917,26 +47610,26 @@ var require_hoister = __commonJS({
         return attachTo.isVariableDeclarator() ? attached.get("init") : attached.get("declarations.0.init");
       }
     };
-    exports.default = PathHoister;
+    exports2.default = PathHoister;
   }
 });
 
 // node_modules/@babel/traverse/lib/path/modification.js
 var require_modification = __commonJS({
-  "node_modules/@babel/traverse/lib/path/modification.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/modification.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._containerInsert = _containerInsert;
-    exports._containerInsertAfter = _containerInsertAfter;
-    exports._containerInsertBefore = _containerInsertBefore;
-    exports._verifyNodeList = _verifyNodeList;
-    exports.insertAfter = insertAfter;
-    exports.insertBefore = insertBefore;
-    exports.pushContainer = pushContainer;
-    exports.unshiftContainer = unshiftContainer;
-    exports.updateSiblingKeys = updateSiblingKeys;
+    exports2._containerInsert = _containerInsert;
+    exports2._containerInsertAfter = _containerInsertAfter;
+    exports2._containerInsertBefore = _containerInsertBefore;
+    exports2._verifyNodeList = _verifyNodeList;
+    exports2.insertAfter = insertAfter;
+    exports2.insertBefore = insertBefore;
+    exports2.pushContainer = pushContainer;
+    exports2.unshiftContainer = unshiftContainer;
+    exports2.updateSiblingKeys = updateSiblingKeys;
     var _cache = require_cache();
     var _index = require_path();
     var _context = require_context2();
@@ -44149,7 +47842,7 @@ var require_modification = __commonJS({
       return path3.replaceWithMultiple(verifiedNodes);
     }
     {
-      exports.hoist = function hoist(scope = this.scope) {
+      exports2.hoist = function hoist(scope = this.scope) {
         const hoister = new _hoister.default(this, scope);
         return hoister.run();
       };
@@ -44159,17 +47852,17 @@ var require_modification = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/replacement.js
 var require_replacement = __commonJS({
-  "node_modules/@babel/traverse/lib/path/replacement.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/replacement.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._replaceWith = _replaceWith;
-    exports.replaceExpressionWithStatements = replaceExpressionWithStatements;
-    exports.replaceInline = replaceInline;
-    exports.replaceWith = replaceWith;
-    exports.replaceWithMultiple = replaceWithMultiple;
-    exports.replaceWithSourceString = replaceWithSourceString;
+    exports2._replaceWith = _replaceWith;
+    exports2.replaceExpressionWithStatements = replaceExpressionWithStatements;
+    exports2.replaceInline = replaceInline;
+    exports2.replaceWith = replaceWith;
+    exports2.replaceWithMultiple = replaceWithMultiple;
+    exports2.replaceWithSourceString = replaceWithSourceString;
     var _codeFrame = require_lib5();
     var _index = require_lib9();
     var _index2 = require_path();
@@ -44431,13 +48124,13 @@ var require_replacement = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/evaluation.js
 var require_evaluation = __commonJS({
-  "node_modules/@babel/traverse/lib/path/evaluation.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/evaluation.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.evaluate = evaluate;
-    exports.evaluateTruthy = evaluateTruthy;
+    exports2.evaluate = evaluate;
+    exports2.evaluateTruthy = evaluateTruthy;
     var VALID_OBJECT_CALLEES = ["Number", "String", "Math"];
     var VALID_IDENTIFIER_CALLEES = ["isFinite", "isNaN", "parseFloat", "parseInt", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", null, null];
     var INVALID_METHODS = ["random"];
@@ -44818,17 +48511,17 @@ var require_evaluation = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/conversion.js
 var require_conversion = __commonJS({
-  "node_modules/@babel/traverse/lib/path/conversion.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/conversion.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.arrowFunctionToExpression = arrowFunctionToExpression;
-    exports.ensureBlock = ensureBlock;
-    exports.ensureFunctionName = ensureFunctionName;
-    exports.splitExportDeclaration = splitExportDeclaration;
-    exports.toComputedKey = toComputedKey;
-    exports.unwrapFunctionEnvironment = unwrapFunctionEnvironment;
+    exports2.arrowFunctionToExpression = arrowFunctionToExpression;
+    exports2.ensureBlock = ensureBlock;
+    exports2.ensureFunctionName = ensureFunctionName;
+    exports2.splitExportDeclaration = splitExportDeclaration;
+    exports2.toComputedKey = toComputedKey;
+    exports2.unwrapFunctionEnvironment = unwrapFunctionEnvironment;
     var _t = require_lib3();
     var _template = require_lib6();
     var _visitors = require_visitors();
@@ -44922,7 +48615,7 @@ var require_conversion = __commonJS({
       return this.node;
     }
     {
-      exports.arrowFunctionToShadowed = function() {
+      exports2.arrowFunctionToShadowed = function() {
         if (!this.isArrowFunctionExpression())
           return;
         this.arrowFunctionToExpression();
@@ -45447,26 +49140,26 @@ var require_conversion = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/introspection.js
 var require_introspection = __commonJS({
-  "node_modules/@babel/traverse/lib/path/introspection.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/introspection.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._guessExecutionStatusRelativeTo = _guessExecutionStatusRelativeTo;
-    exports._resolve = _resolve;
-    exports.canHaveVariableDeclarationOrExpression = canHaveVariableDeclarationOrExpression;
-    exports.canSwapBetweenExpressionAndStatement = canSwapBetweenExpressionAndStatement;
-    exports.getSource = getSource;
-    exports.isCompletionRecord = isCompletionRecord;
-    exports.isConstantExpression = isConstantExpression;
-    exports.isInStrictMode = isInStrictMode;
-    exports.isNodeType = isNodeType;
-    exports.isStatementOrBlock = isStatementOrBlock;
-    exports.isStatic = isStatic;
-    exports.matchesPattern = matchesPattern;
-    exports.referencesImport = referencesImport;
-    exports.resolve = resolve;
-    exports.willIMaybeExecuteBefore = willIMaybeExecuteBefore;
+    exports2._guessExecutionStatusRelativeTo = _guessExecutionStatusRelativeTo;
+    exports2._resolve = _resolve;
+    exports2.canHaveVariableDeclarationOrExpression = canHaveVariableDeclarationOrExpression;
+    exports2.canSwapBetweenExpressionAndStatement = canSwapBetweenExpressionAndStatement;
+    exports2.getSource = getSource;
+    exports2.isCompletionRecord = isCompletionRecord;
+    exports2.isConstantExpression = isConstantExpression;
+    exports2.isInStrictMode = isInStrictMode;
+    exports2.isNodeType = isNodeType;
+    exports2.isStatementOrBlock = isStatementOrBlock;
+    exports2.isStatic = isStatic;
+    exports2.matchesPattern = matchesPattern;
+    exports2.referencesImport = referencesImport;
+    exports2.resolve = resolve;
+    exports2.willIMaybeExecuteBefore = willIMaybeExecuteBefore;
     var _t = require_lib3();
     var {
       STATEMENT_OR_BLOCK_KEYS,
@@ -45483,7 +49176,7 @@ var require_introspection = __commonJS({
       return _matchesPattern(this.node, pattern, allowPartial);
     }
     {
-      exports.has = function has(key) {
+      exports2.has = function has(key) {
         var _this$node;
         const val = (_this$node = this.node) == null ? void 0 : _this$node[key];
         if (val && Array.isArray(val)) {
@@ -45497,11 +49190,11 @@ var require_introspection = __commonJS({
       return this.scope.isStatic(this.node);
     }
     {
-      exports.is = exports.has;
-      exports.isnt = function isnt(key) {
+      exports2.is = exports2.has;
+      exports2.isnt = function isnt(key) {
         return !this.has(key);
       };
-      exports.equals = function equals(key, value2) {
+      exports2.equals = function equals(key, value2) {
         return this.node[key] === value2;
       };
     }
@@ -45869,26 +49562,26 @@ var require_introspection = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/family.js
 var require_family = __commonJS({
-  "node_modules/@babel/traverse/lib/path/family.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/family.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._getKey = _getKey;
-    exports._getPattern = _getPattern;
-    exports.get = get;
-    exports.getAllNextSiblings = getAllNextSiblings;
-    exports.getAllPrevSiblings = getAllPrevSiblings;
-    exports.getAssignmentIdentifiers = getAssignmentIdentifiers;
-    exports.getBindingIdentifierPaths = getBindingIdentifierPaths;
-    exports.getBindingIdentifiers = getBindingIdentifiers;
-    exports.getCompletionRecords = getCompletionRecords;
-    exports.getNextSibling = getNextSibling;
-    exports.getOpposite = getOpposite;
-    exports.getOuterBindingIdentifierPaths = getOuterBindingIdentifierPaths;
-    exports.getOuterBindingIdentifiers = getOuterBindingIdentifiers;
-    exports.getPrevSibling = getPrevSibling;
-    exports.getSibling = getSibling;
+    exports2._getKey = _getKey;
+    exports2._getPattern = _getPattern;
+    exports2.get = get;
+    exports2.getAllNextSiblings = getAllNextSiblings;
+    exports2.getAllPrevSiblings = getAllPrevSiblings;
+    exports2.getAssignmentIdentifiers = getAssignmentIdentifiers;
+    exports2.getBindingIdentifierPaths = getBindingIdentifierPaths;
+    exports2.getBindingIdentifiers = getBindingIdentifiers;
+    exports2.getCompletionRecords = getCompletionRecords;
+    exports2.getNextSibling = getNextSibling;
+    exports2.getOpposite = getOpposite;
+    exports2.getOuterBindingIdentifierPaths = getOuterBindingIdentifierPaths;
+    exports2.getOuterBindingIdentifiers = getOuterBindingIdentifiers;
+    exports2.getPrevSibling = getPrevSibling;
+    exports2.getSibling = getSibling;
     var _index = require_path();
     var _t = require_lib3();
     var {
@@ -46221,14 +49914,14 @@ var require_family = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/comments.js
 var require_comments = __commonJS({
-  "node_modules/@babel/traverse/lib/path/comments.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/comments.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.addComment = addComment;
-    exports.addComments = addComments;
-    exports.shareCommentsWithSiblings = shareCommentsWithSiblings;
+    exports2.addComment = addComment;
+    exports2.addComments = addComments;
+    exports2.shareCommentsWithSiblings = shareCommentsWithSiblings;
     var _t = require_lib3();
     var {
       addComment: _addComment,
@@ -46282,12 +49975,12 @@ var require_comments = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/index.js
 var require_path = __commonJS({
-  "node_modules/@babel/traverse/lib/path/index.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = exports.SHOULD_STOP = exports.SHOULD_SKIP = exports.REMOVED = void 0;
+    exports2.default = exports2.SHOULD_STOP = exports2.SHOULD_SKIP = exports2.REMOVED = void 0;
     var virtualTypes = require_virtual_types();
     var _debug = require_src();
     var _index = require_lib9();
@@ -46313,10 +50006,10 @@ var require_path = __commonJS({
       validate
     } = _t;
     var debug = _debug("babel");
-    var REMOVED = exports.REMOVED = 1 << 0;
-    var SHOULD_STOP = exports.SHOULD_STOP = 1 << 1;
-    var SHOULD_SKIP = exports.SHOULD_SKIP = 1 << 2;
-    var NodePath_Final = exports.default = class NodePath {
+    var REMOVED = exports2.REMOVED = 1 << 0;
+    var SHOULD_STOP = exports2.SHOULD_STOP = 1 << 1;
+    var SHOULD_SKIP = exports2.SHOULD_SKIP = 1 << 2;
+    var NodePath_Final = exports2.default = class NodePath {
       constructor(hub, parent) {
         this.contexts = [];
         this.state = null;
@@ -46593,12 +50286,12 @@ var require_path = __commonJS({
 
 // node_modules/@babel/traverse/lib/context.js
 var require_context = __commonJS({
-  "node_modules/@babel/traverse/lib/context.js"(exports) {
+  "node_modules/@babel/traverse/lib/context.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _index = require_path();
     var _t = require_lib3();
     var _context = require_context2();
@@ -46718,18 +50411,18 @@ var require_context = __commonJS({
         }
       }
     };
-    exports.default = TraversalContext;
+    exports2.default = TraversalContext;
   }
 });
 
 // node_modules/@babel/traverse/lib/traverse-node.js
 var require_traverse_node = __commonJS({
-  "node_modules/@babel/traverse/lib/traverse-node.js"(exports) {
+  "node_modules/@babel/traverse/lib/traverse-node.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.traverseNode = traverseNode;
+    exports2.traverseNode = traverseNode;
     var _context = require_context();
     var _index = require_path();
     var _t = require_lib3();
@@ -46762,32 +50455,32 @@ var require_traverse_node = __commonJS({
 
 // node_modules/@babel/traverse/lib/path/context.js
 var require_context2 = __commonJS({
-  "node_modules/@babel/traverse/lib/path/context.js"(exports) {
+  "node_modules/@babel/traverse/lib/path/context.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports._call = _call;
-    exports._getQueueContexts = _getQueueContexts;
-    exports._resyncKey = _resyncKey;
-    exports._resyncList = _resyncList;
-    exports._resyncParent = _resyncParent;
-    exports._resyncRemoved = _resyncRemoved;
-    exports.call = call;
-    exports.isDenylisted = isDenylisted;
-    exports.popContext = popContext;
-    exports.pushContext = pushContext;
-    exports.requeue = requeue;
-    exports.requeueComputedKeyAndDecorators = requeueComputedKeyAndDecorators;
-    exports.resync = resync;
-    exports.setContext = setContext;
-    exports.setKey = setKey;
-    exports.setScope = setScope;
-    exports.setup = setup;
-    exports.skip = skip;
-    exports.skipKey = skipKey;
-    exports.stop = stop;
-    exports.visit = visit;
+    exports2._call = _call;
+    exports2._getQueueContexts = _getQueueContexts;
+    exports2._resyncKey = _resyncKey;
+    exports2._resyncList = _resyncList;
+    exports2._resyncParent = _resyncParent;
+    exports2._resyncRemoved = _resyncRemoved;
+    exports2.call = call;
+    exports2.isDenylisted = isDenylisted;
+    exports2.popContext = popContext;
+    exports2.pushContext = pushContext;
+    exports2.requeue = requeue;
+    exports2.requeueComputedKeyAndDecorators = requeueComputedKeyAndDecorators;
+    exports2.resync = resync;
+    exports2.setContext = setContext;
+    exports2.setKey = setKey;
+    exports2.setScope = setScope;
+    exports2.setup = setup;
+    exports2.skip = skip;
+    exports2.skipKey = skipKey;
+    exports2.stop = stop;
+    exports2.visit = visit;
     var _traverseNode = require_traverse_node();
     var _index = require_path();
     var _removal = require_removal();
@@ -46834,7 +50527,7 @@ var require_context2 = __commonJS({
       return denylist == null ? void 0 : denylist.includes(this.node.type);
     }
     {
-      exports.isBlacklisted = isDenylisted;
+      exports2.isBlacklisted = isDenylisted;
     }
     function restoreContext(path3, context) {
       if (path3.context !== context) {
@@ -47021,12 +50714,12 @@ var require_context2 = __commonJS({
 
 // node_modules/@babel/traverse/lib/hub.js
 var require_hub = __commonJS({
-  "node_modules/@babel/traverse/lib/hub.js"(exports) {
+  "node_modules/@babel/traverse/lib/hub.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var Hub = class {
       getCode() {
       }
@@ -47039,39 +50732,39 @@ var require_hub = __commonJS({
         return new Error2(msg);
       }
     };
-    exports.default = Hub;
+    exports2.default = Hub;
   }
 });
 
 // node_modules/@babel/traverse/lib/index.js
 var require_lib9 = __commonJS({
-  "node_modules/@babel/traverse/lib/index.js"(exports) {
+  "node_modules/@babel/traverse/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "Hub", {
+    Object.defineProperty(exports2, "Hub", {
       enumerable: true,
       get: function() {
         return _hub.default;
       }
     });
-    Object.defineProperty(exports, "NodePath", {
+    Object.defineProperty(exports2, "NodePath", {
       enumerable: true,
       get: function() {
         return _index.default;
       }
     });
-    Object.defineProperty(exports, "Scope", {
+    Object.defineProperty(exports2, "Scope", {
       enumerable: true,
       get: function() {
         return _index2.default;
       }
     });
-    exports.visitors = exports.default = void 0;
+    exports2.visitors = exports2.default = void 0;
     require_context2();
     var visitors = require_visitors();
-    exports.visitors = visitors;
+    exports2.visitors = visitors;
     var _t = require_lib3();
     var cache = require_cache();
     var _traverseNode = require_traverse_node();
@@ -47100,7 +50793,7 @@ var require_lib9 = __commonJS({
       visitors.explode(opts);
       (0, _traverseNode.traverseNode)(parent, opts, scope, state, parentPath, null, visitSelf);
     }
-    var _default3 = exports.default = traverse;
+    var _default3 = exports2.default = traverse;
     traverse.visitors = visitors;
     traverse.verify = visitors.verify;
     traverse.explode = visitors.explode;
@@ -47138,8 +50831,8 @@ var require_lib9 = __commonJS({
 
 // node_modules/semver/semver.js
 var require_semver = __commonJS({
-  "node_modules/semver/semver.js"(exports, module) {
-    exports = module.exports = SemVer;
+  "node_modules/semver/semver.js"(exports2, module2) {
+    exports2 = module2.exports = SemVer;
     var debug;
     if (typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG)) {
       debug = function() {
@@ -47151,16 +50844,16 @@ var require_semver = __commonJS({
       debug = function() {
       };
     }
-    exports.SEMVER_SPEC_VERSION = "2.0.0";
+    exports2.SEMVER_SPEC_VERSION = "2.0.0";
     var MAX_LENGTH = 256;
     var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER || /* istanbul ignore next */
     9007199254740991;
     var MAX_SAFE_COMPONENT_LENGTH = 16;
     var MAX_SAFE_BUILD_LENGTH = MAX_LENGTH - 6;
-    var re = exports.re = [];
-    var safeRe = exports.safeRe = [];
-    var src = exports.src = [];
-    var t = exports.tokens = {};
+    var re = exports2.re = [];
+    var safeRe = exports2.safeRe = [];
+    var src = exports2.src = [];
+    var t = exports2.tokens = {};
     var R = 0;
     function tok(n) {
       t[n] = R++;
@@ -47273,7 +50966,7 @@ var require_semver = __commonJS({
       }
     }
     var i;
-    exports.parse = parse3;
+    exports2.parse = parse3;
     function parse3(version3, options) {
       if (!options || typeof options !== "object") {
         options = {
@@ -47300,17 +50993,17 @@ var require_semver = __commonJS({
         return null;
       }
     }
-    exports.valid = valid;
+    exports2.valid = valid;
     function valid(version3, options) {
       var v = parse3(version3, options);
       return v ? v.version : null;
     }
-    exports.clean = clean;
+    exports2.clean = clean;
     function clean(version3, options) {
       var s = parse3(version3.trim().replace(/^[=v]+/, ""), options);
       return s ? s.version : null;
     }
-    exports.SemVer = SemVer;
+    exports2.SemVer = SemVer;
     function SemVer(version3, options) {
       if (!options || typeof options !== "object") {
         options = {
@@ -47522,7 +51215,7 @@ var require_semver = __commonJS({
       this.raw = this.version;
       return this;
     };
-    exports.inc = inc;
+    exports2.inc = inc;
     function inc(version3, release, loose, identifier) {
       if (typeof loose === "string") {
         identifier = loose;
@@ -47534,7 +51227,7 @@ var require_semver = __commonJS({
         return null;
       }
     }
-    exports.diff = diff;
+    exports2.diff = diff;
     function diff(version1, version22) {
       if (eq2(version1, version22)) {
         return null;
@@ -47556,7 +51249,7 @@ var require_semver = __commonJS({
         return defaultResult;
       }
     }
-    exports.compareIdentifiers = compareIdentifiers;
+    exports2.compareIdentifiers = compareIdentifiers;
     var numeric2 = /^[0-9]+$/;
     function compareIdentifiers(a, b) {
       var anum = numeric2.test(a);
@@ -47567,77 +51260,77 @@ var require_semver = __commonJS({
       }
       return a === b ? 0 : anum && !bnum ? -1 : bnum && !anum ? 1 : a < b ? -1 : 1;
     }
-    exports.rcompareIdentifiers = rcompareIdentifiers;
+    exports2.rcompareIdentifiers = rcompareIdentifiers;
     function rcompareIdentifiers(a, b) {
       return compareIdentifiers(b, a);
     }
-    exports.major = major;
+    exports2.major = major;
     function major(a, loose) {
       return new SemVer(a, loose).major;
     }
-    exports.minor = minor;
+    exports2.minor = minor;
     function minor(a, loose) {
       return new SemVer(a, loose).minor;
     }
-    exports.patch = patch;
+    exports2.patch = patch;
     function patch(a, loose) {
       return new SemVer(a, loose).patch;
     }
-    exports.compare = compare;
+    exports2.compare = compare;
     function compare(a, b, loose) {
       return new SemVer(a, loose).compare(new SemVer(b, loose));
     }
-    exports.compareLoose = compareLoose;
+    exports2.compareLoose = compareLoose;
     function compareLoose(a, b) {
       return compare(a, b, true);
     }
-    exports.compareBuild = compareBuild;
+    exports2.compareBuild = compareBuild;
     function compareBuild(a, b, loose) {
       var versionA = new SemVer(a, loose);
       var versionB = new SemVer(b, loose);
       return versionA.compare(versionB) || versionA.compareBuild(versionB);
     }
-    exports.rcompare = rcompare;
+    exports2.rcompare = rcompare;
     function rcompare(a, b, loose) {
       return compare(b, a, loose);
     }
-    exports.sort = sort;
+    exports2.sort = sort;
     function sort(list, loose) {
       return list.sort(function(a, b) {
-        return exports.compareBuild(a, b, loose);
+        return exports2.compareBuild(a, b, loose);
       });
     }
-    exports.rsort = rsort;
+    exports2.rsort = rsort;
     function rsort(list, loose) {
       return list.sort(function(a, b) {
-        return exports.compareBuild(b, a, loose);
+        return exports2.compareBuild(b, a, loose);
       });
     }
-    exports.gt = gt2;
+    exports2.gt = gt2;
     function gt2(a, b, loose) {
       return compare(a, b, loose) > 0;
     }
-    exports.lt = lt2;
+    exports2.lt = lt2;
     function lt2(a, b, loose) {
       return compare(a, b, loose) < 0;
     }
-    exports.eq = eq2;
+    exports2.eq = eq2;
     function eq2(a, b, loose) {
       return compare(a, b, loose) === 0;
     }
-    exports.neq = neq;
+    exports2.neq = neq;
     function neq(a, b, loose) {
       return compare(a, b, loose) !== 0;
     }
-    exports.gte = gte2;
+    exports2.gte = gte2;
     function gte2(a, b, loose) {
       return compare(a, b, loose) >= 0;
     }
-    exports.lte = lte2;
+    exports2.lte = lte2;
     function lte2(a, b, loose) {
       return compare(a, b, loose) <= 0;
     }
-    exports.cmp = cmp;
+    exports2.cmp = cmp;
     function cmp(a, op, b, loose) {
       switch (op) {
         case "===":
@@ -47670,7 +51363,7 @@ var require_semver = __commonJS({
           throw new TypeError("Invalid operator: " + op);
       }
     }
-    exports.Comparator = Comparator;
+    exports2.Comparator = Comparator;
     function Comparator(comp, options) {
       if (!options || typeof options !== "object") {
         options = {
@@ -47766,7 +51459,7 @@ var require_semver = __commonJS({
       var oppositeDirectionsGreaterThan = cmp(this.semver, ">", comp.semver, options) && ((this.operator === "<=" || this.operator === "<") && (comp.operator === ">=" || comp.operator === ">"));
       return sameDirectionIncreasing || sameDirectionDecreasing || sameSemVer && differentDirectionsInclusive || oppositeDirectionsLessThan || oppositeDirectionsGreaterThan;
     };
-    exports.Range = Range;
+    exports2.Range = Range;
     function Range(range, options) {
       if (!options || typeof options !== "object") {
         options = {
@@ -47860,7 +51553,7 @@ var require_semver = __commonJS({
       }
       return result;
     }
-    exports.toComparators = toComparators;
+    exports2.toComparators = toComparators;
     function toComparators(range, options) {
       return new Range(range, options).set.map(function(comp) {
         return comp.map(function(c) {
@@ -48083,7 +51776,7 @@ var require_semver = __commonJS({
       }
       return true;
     }
-    exports.satisfies = satisfies;
+    exports2.satisfies = satisfies;
     function satisfies(version3, range, options) {
       try {
         range = new Range(range, options);
@@ -48092,7 +51785,7 @@ var require_semver = __commonJS({
       }
       return range.test(version3);
     }
-    exports.maxSatisfying = maxSatisfying;
+    exports2.maxSatisfying = maxSatisfying;
     function maxSatisfying(versions, range, options) {
       var max = null;
       var maxSV = null;
@@ -48111,7 +51804,7 @@ var require_semver = __commonJS({
       });
       return max;
     }
-    exports.minSatisfying = minSatisfying;
+    exports2.minSatisfying = minSatisfying;
     function minSatisfying(versions, range, options) {
       var min = null;
       var minSV = null;
@@ -48130,7 +51823,7 @@ var require_semver = __commonJS({
       });
       return min;
     }
-    exports.minVersion = minVersion;
+    exports2.minVersion = minVersion;
     function minVersion(range, loose) {
       range = new Range(range, loose);
       var minver = new SemVer("0.0.0");
@@ -48173,7 +51866,7 @@ var require_semver = __commonJS({
       }
       return null;
     }
-    exports.validRange = validRange;
+    exports2.validRange = validRange;
     function validRange(range, options) {
       try {
         return new Range(range, options).range || "*";
@@ -48181,15 +51874,15 @@ var require_semver = __commonJS({
         return null;
       }
     }
-    exports.ltr = ltr;
+    exports2.ltr = ltr;
     function ltr(version3, range, options) {
       return outside(version3, range, "<", options);
     }
-    exports.gtr = gtr;
+    exports2.gtr = gtr;
     function gtr(version3, range, options) {
       return outside(version3, range, ">", options);
     }
-    exports.outside = outside;
+    exports2.outside = outside;
     function outside(version3, range, hilo, options) {
       version3 = new SemVer(version3, options);
       range = new Range(range, options);
@@ -48242,18 +51935,18 @@ var require_semver = __commonJS({
       }
       return true;
     }
-    exports.prerelease = prerelease;
+    exports2.prerelease = prerelease;
     function prerelease(version3, options) {
       var parsed = parse3(version3, options);
       return parsed && parsed.prerelease.length ? parsed.prerelease : null;
     }
-    exports.intersects = intersects;
+    exports2.intersects = intersects;
     function intersects(r1, r2, options) {
       r1 = new Range(r1, options);
       r2 = new Range(r2, options);
       return r1.intersects(r2);
     }
-    exports.coerce = coerce2;
+    exports2.coerce = coerce2;
     function coerce2(version3, options) {
       if (version3 instanceof SemVer) {
         return version3;
@@ -48288,13 +51981,13 @@ var require_semver = __commonJS({
 
 // node_modules/@babel/helper-module-imports/lib/import-builder.js
 var require_import_builder = __commonJS({
-  "node_modules/@babel/helper-module-imports/lib/import-builder.js"(exports) {
+  "node_modules/@babel/helper-module-imports/lib/import-builder.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
-    var _assert = __require("assert");
+    exports2.default = void 0;
+    var _assert = require("assert");
     var _t = require_lib3();
     var {
       callExpression,
@@ -48408,18 +52101,18 @@ var require_import_builder = __commonJS({
         this._resultName = memberExpression(this._resultName, identifier(name));
       }
     };
-    exports.default = ImportBuilder;
+    exports2.default = ImportBuilder;
   }
 });
 
 // node_modules/@babel/helper-module-imports/lib/is-module.js
 var require_is_module = __commonJS({
-  "node_modules/@babel/helper-module-imports/lib/is-module.js"(exports) {
+  "node_modules/@babel/helper-module-imports/lib/is-module.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = isModule;
+    exports2.default = isModule;
     function isModule(path3) {
       return path3.node.sourceType === "module";
     }
@@ -48428,13 +52121,13 @@ var require_is_module = __commonJS({
 
 // node_modules/@babel/helper-module-imports/lib/import-injector.js
 var require_import_injector = __commonJS({
-  "node_modules/@babel/helper-module-imports/lib/import-injector.js"(exports) {
+  "node_modules/@babel/helper-module-imports/lib/import-injector.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
-    var _assert = __require("assert");
+    exports2.default = void 0;
+    var _assert = require("assert");
     var _t = require_lib3();
     var _importBuilder = require_import_builder();
     var _isModule = require_is_module();
@@ -48712,7 +52405,7 @@ var require_import_injector = __commonJS({
         return !!lastImportPath;
       }
     };
-    exports.default = ImportInjector;
+    exports2.default = ImportInjector;
     function isValueImport(node) {
       return node.importKind !== "type" && node.importKind !== "typeof";
     }
@@ -48746,22 +52439,22 @@ var require_import_injector = __commonJS({
 
 // node_modules/@babel/helper-module-imports/lib/index.js
 var require_lib10 = __commonJS({
-  "node_modules/@babel/helper-module-imports/lib/index.js"(exports) {
+  "node_modules/@babel/helper-module-imports/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "ImportInjector", {
+    Object.defineProperty(exports2, "ImportInjector", {
       enumerable: true,
       get: function() {
         return _importInjector.default;
       }
     });
-    exports.addDefault = addDefault;
-    exports.addNamed = addNamed;
-    exports.addNamespace = addNamespace;
-    exports.addSideEffect = addSideEffect;
-    Object.defineProperty(exports, "isModule", {
+    exports2.addDefault = addDefault;
+    exports2.addNamed = addNamed;
+    exports2.addNamespace = addNamespace;
+    exports2.addSideEffect = addSideEffect;
+    Object.defineProperty(exports2, "isModule", {
       enumerable: true,
       get: function() {
         return _isModule.default;
@@ -48786,12 +52479,12 @@ var require_lib10 = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/rewrite-this.js
 var require_rewrite_this = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/rewrite-this.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/rewrite-this.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = rewriteThis;
+    exports2.default = rewriteThis;
     var _core = require_lib27();
     var _traverse = require_lib9();
     var rewriteThisVisitor;
@@ -48811,12 +52504,12 @@ var require_rewrite_this = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/rewrite-live-references.js
 var require_rewrite_live_references = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/rewrite-live-references.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/rewrite-live-references.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = rewriteLiveReferences;
+    exports2.default = rewriteLiveReferences;
     var _core = require_lib27();
     function isInType(path3) {
       do {
@@ -49180,16 +52873,16 @@ var require_rewrite_live_references = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/normalize-and-load-metadata.js
 var require_normalize_and_load_metadata = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/normalize-and-load-metadata.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/normalize-and-load-metadata.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = normalizeModuleAndLoadMetadata;
-    exports.hasExports = hasExports;
-    exports.isSideEffectImport = isSideEffectImport;
-    exports.validateImportInteropOption = validateImportInteropOption;
-    var _path = __require("path");
+    exports2.default = normalizeModuleAndLoadMetadata;
+    exports2.hasExports = hasExports;
+    exports2.isSideEffectImport = isSideEffectImport;
+    exports2.validateImportInteropOption = validateImportInteropOption;
+    var _path = require("path");
     var _helperValidatorIdentifier = require_lib();
     function hasExports(metadata) {
       return metadata.hasExports;
@@ -49554,13 +53247,13 @@ var require_normalize_and_load_metadata = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/lazy-modules.js
 var require_lazy_modules = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/lazy-modules.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/lazy-modules.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.toGetWrapperPayload = toGetWrapperPayload;
-    exports.wrapReference = wrapReference;
+    exports2.toGetWrapperPayload = toGetWrapperPayload;
+    exports2.wrapReference = wrapReference;
     var _core = require_lib27();
     var _normalizeAndLoadMetadata = require_normalize_and_load_metadata();
     function toGetWrapperPayload(lazy2) {
@@ -49591,15 +53284,15 @@ var require_lazy_modules = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/dynamic-import.js
 var require_dynamic_import = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/dynamic-import.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/dynamic-import.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.buildDynamicImport = buildDynamicImport;
+    exports2.buildDynamicImport = buildDynamicImport;
     var _core = require_lib27();
     {
-      exports.getDynamicImportSource = function getDynamicImportSource(node) {
+      exports2.getDynamicImportSource = function getDynamicImportSource(node) {
         const [source] = node.arguments;
         return _core.types.isStringLiteral(source) || _core.types.isTemplateLiteral(source) ? source : _core.template.expression.ast`\`\${${source}}\``;
       };
@@ -49643,15 +53336,15 @@ var require_dynamic_import = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/get-module-name.js
 var require_get_module_name = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/get-module-name.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/get-module-name.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = getModuleName;
+    exports2.default = getModuleName;
     {
       const originalGetModuleName = getModuleName;
-      exports.default = getModuleName = function getModuleName2(rootOpts, pluginOpts) {
+      exports2.default = getModuleName = function getModuleName2(rootOpts, pluginOpts) {
         var _pluginOpts$moduleId, _pluginOpts$moduleIds, _pluginOpts$getModule, _pluginOpts$moduleRoo;
         return originalGetModuleName(rootOpts, {
           moduleId: (_pluginOpts$moduleId = pluginOpts.moduleId) != null ? _pluginOpts$moduleId : rootOpts.moduleId,
@@ -49695,52 +53388,52 @@ var require_get_module_name = __commonJS({
 
 // node_modules/@babel/helper-module-transforms/lib/index.js
 var require_lib11 = __commonJS({
-  "node_modules/@babel/helper-module-transforms/lib/index.js"(exports) {
+  "node_modules/@babel/helper-module-transforms/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "buildDynamicImport", {
+    Object.defineProperty(exports2, "buildDynamicImport", {
       enumerable: true,
       get: function() {
         return _dynamicImport.buildDynamicImport;
       }
     });
-    exports.buildNamespaceInitStatements = buildNamespaceInitStatements;
-    exports.ensureStatementsHoisted = ensureStatementsHoisted;
-    Object.defineProperty(exports, "getModuleName", {
+    exports2.buildNamespaceInitStatements = buildNamespaceInitStatements;
+    exports2.ensureStatementsHoisted = ensureStatementsHoisted;
+    Object.defineProperty(exports2, "getModuleName", {
       enumerable: true,
       get: function() {
         return _getModuleName.default;
       }
     });
-    Object.defineProperty(exports, "hasExports", {
+    Object.defineProperty(exports2, "hasExports", {
       enumerable: true,
       get: function() {
         return _normalizeAndLoadMetadata.hasExports;
       }
     });
-    Object.defineProperty(exports, "isModule", {
+    Object.defineProperty(exports2, "isModule", {
       enumerable: true,
       get: function() {
         return _helperModuleImports.isModule;
       }
     });
-    Object.defineProperty(exports, "isSideEffectImport", {
+    Object.defineProperty(exports2, "isSideEffectImport", {
       enumerable: true,
       get: function() {
         return _normalizeAndLoadMetadata.isSideEffectImport;
       }
     });
-    exports.rewriteModuleStatementsAndPrepareHeader = rewriteModuleStatementsAndPrepareHeader;
-    Object.defineProperty(exports, "rewriteThis", {
+    exports2.rewriteModuleStatementsAndPrepareHeader = rewriteModuleStatementsAndPrepareHeader;
+    Object.defineProperty(exports2, "rewriteThis", {
       enumerable: true,
       get: function() {
         return _rewriteThis.default;
       }
     });
-    exports.wrapInterop = wrapInterop;
-    var _assert = __require("assert");
+    exports2.wrapInterop = wrapInterop;
+    var _assert = require("assert");
     var _core = require_lib27();
     var _helperModuleImports = require_lib10();
     var _rewriteThis = require_rewrite_this();
@@ -49750,7 +53443,7 @@ var require_lib11 = __commonJS({
     var _dynamicImport = require_dynamic_import();
     var _getModuleName = require_get_module_name();
     {
-      exports.getDynamicImportSource = require_dynamic_import().getDynamicImportSource;
+      exports2.getDynamicImportSource = require_dynamic_import().getDynamicImportSource;
     }
     function rewriteModuleStatementsAndPrepareHeader(path3, {
       exportName,
@@ -49868,25 +53561,25 @@ var require_lib11 = __commonJS({
     }
     var ReexportTemplate = {
       constant: ({
-        exports: exports2,
+        exports: exports3,
         exportName,
         namespaceImport
       }) => _core.template.statement.ast`
-      ${exports2}.${exportName} = ${namespaceImport};
+      ${exports3}.${exportName} = ${namespaceImport};
     `,
       constantComputed: ({
-        exports: exports2,
+        exports: exports3,
         exportName,
         namespaceImport
       }) => _core.template.statement.ast`
-      ${exports2}["${exportName}"] = ${namespaceImport};
+      ${exports3}["${exportName}"] = ${namespaceImport};
     `,
       spec: ({
-        exports: exports2,
+        exports: exports3,
         exportName,
         namespaceImport
       }) => _core.template.statement.ast`
-      Object.defineProperty(${exports2}, "${exportName}", {
+      Object.defineProperty(${exports3}, "${exportName}", {
         enumerable: true,
         get: function() {
           return ${namespaceImport};
@@ -50057,21 +53750,21 @@ var require_lib11 = __commonJS({
     }
     var InitTemplate = {
       computed: ({
-        exports: exports2,
+        exports: exports3,
         name,
         value: value2
-      }) => _core.template.expression.ast`${exports2}["${name}"] = ${value2}`,
+      }) => _core.template.expression.ast`${exports3}["${name}"] = ${value2}`,
       default: ({
-        exports: exports2,
+        exports: exports3,
         name,
         value: value2
-      }) => _core.template.expression.ast`${exports2}.${name} = ${value2}`,
+      }) => _core.template.expression.ast`${exports3}.${name} = ${value2}`,
       define: ({
-        exports: exports2,
+        exports: exports3,
         name,
         value: value2
       }) => _core.template.expression.ast`
-      Object.defineProperty(${exports2}, "${name}", {
+      Object.defineProperty(${exports3}, "${name}", {
         enumerable: true,
         value: void 0,
         writable: true
@@ -50080,11 +53773,11 @@ var require_lib11 = __commonJS({
     function buildInitStatement(metadata, exportNames, initExpr) {
       const {
         stringSpecifiers,
-        exportName: exports2
+        exportName: exports3
       } = metadata;
       return _core.types.expressionStatement(exportNames.reduce((value2, name) => {
         const params = {
-          exports: exports2,
+          exports: exports3,
           name,
           value: value2
         };
@@ -50102,21 +53795,21 @@ var require_lib11 = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/file/babel-7-helpers.cjs
 var require_babel_7_helpers = __commonJS({
-  "node_modules/@babel/core/lib/transformation/file/babel-7-helpers.cjs"(exports) {
+  "node_modules/@babel/core/lib/transformation/file/babel-7-helpers.cjs"(exports2) {
     {
-      exports.getModuleName = () => require_lib11().getModuleName;
+      exports2.getModuleName = () => require_lib11().getModuleName;
     }
   }
 });
 
 // node_modules/@babel/core/lib/transformation/file/file.js
 var require_file = __commonJS({
-  "node_modules/@babel/core/lib/transformation/file/file.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/file/file.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     function helpers() {
       const data = require_lib7();
       helpers = function() {
@@ -50313,7 +54006,7 @@ var require_file = __commonJS({
         return new _Error(msg);
       }
     };
-    exports.default = File2;
+    exports2.default = File2;
     {
       File2.prototype.addImport = function addImport() {
         throw new Error("This API has been removed. If you're looking for this functionality in Babel 7, you should import the '@babel/helper-module-imports' module and use the functions exposed  from that module, such as 'addNamed' or 'addDefault'.");
@@ -50332,12 +54025,12 @@ var require_file = __commonJS({
 
 // node_modules/@babel/core/lib/tools/build-external-helpers.js
 var require_build_external_helpers = __commonJS({
-  "node_modules/@babel/core/lib/tools/build-external-helpers.js"(exports) {
+  "node_modules/@babel/core/lib/tools/build-external-helpers.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = _default3;
+    exports2.default = _default3;
     function helpers() {
       const data = require_lib7();
       helpers = function() {
@@ -50479,7 +54172,7 @@ var require_build_external_helpers = __commonJS({
 
 // node_modules/gensync/index.js
 var require_gensync = __commonJS({
-  "node_modules/gensync/index.js"(exports, module) {
+  "node_modules/gensync/index.js"(exports2, module2) {
     "use strict";
     var GENSYNC_START = Symbol.for("gensync:v1:start");
     var GENSYNC_SUSPEND = Symbol.for("gensync:v1:suspend");
@@ -50488,7 +54181,7 @@ var require_gensync = __commonJS({
     var GENSYNC_OPTIONS_ERROR = "GENSYNC_OPTIONS_ERROR";
     var GENSYNC_RACE_NONEMPTY = "GENSYNC_RACE_NONEMPTY";
     var GENSYNC_ERRBACK_NO_CALLBACK = "GENSYNC_ERRBACK_NO_CALLBACK";
-    module.exports = Object.assign(
+    module2.exports = Object.assign(
       function gensync(optsOrFn) {
         let genFn = optsOrFn;
         if (typeof optsOrFn !== "function") {
@@ -50811,16 +54504,16 @@ var require_gensync = __commonJS({
 
 // node_modules/@babel/core/lib/gensync-utils/async.js
 var require_async = __commonJS({
-  "node_modules/@babel/core/lib/gensync-utils/async.js"(exports) {
+  "node_modules/@babel/core/lib/gensync-utils/async.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.forwardAsync = forwardAsync;
-    exports.isAsync = void 0;
-    exports.isThenable = isThenable;
-    exports.maybeAsync = maybeAsync;
-    exports.waitFor = exports.onFirstPause = void 0;
+    exports2.forwardAsync = forwardAsync;
+    exports2.isAsync = void 0;
+    exports2.isThenable = isThenable;
+    exports2.maybeAsync = maybeAsync;
+    exports2.waitFor = exports2.onFirstPause = void 0;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -50854,7 +54547,7 @@ var require_async = __commonJS({
     var runGenerator = _gensync()(function* (item) {
       return yield* item;
     });
-    var isAsync2 = exports.isAsync = _gensync()({
+    var isAsync2 = exports2.isAsync = _gensync()({
       sync: () => false,
       errback: (cb) => cb(null, true)
     });
@@ -50889,7 +54582,7 @@ var require_async = __commonJS({
         return cb(adapted);
       });
     }
-    var onFirstPause = exports.onFirstPause = _gensync()({
+    var onFirstPause = exports2.onFirstPause = _gensync()({
       name: "onFirstPause",
       arity: 2,
       sync: function(item) {
@@ -50906,7 +54599,7 @@ var require_async = __commonJS({
         }
       }
     });
-    var waitFor = exports.waitFor = _gensync()({
+    var waitFor = exports2.waitFor = _gensync()({
       sync: (x) => x,
       async: function() {
         var _ref2 = _asyncToGenerator(function* (x) {
@@ -50925,13 +54618,13 @@ var require_async = __commonJS({
 
 // node_modules/@babel/core/lib/config/util.js
 var require_util2 = __commonJS({
-  "node_modules/@babel/core/lib/config/util.js"(exports) {
+  "node_modules/@babel/core/lib/config/util.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.isIterableIterator = isIterableIterator;
-    exports.mergeOptions = mergeOptions;
+    exports2.isIterableIterator = isIterableIterator;
+    exports2.mergeOptions = mergeOptions;
     function mergeOptions(target, source) {
       for (const k of Object.keys(source)) {
         if ((k === "parserOpts" || k === "generatorOpts" || k === "assumptions") && source[k]) {
@@ -50960,16 +54653,16 @@ var require_util2 = __commonJS({
 
 // node_modules/@babel/core/lib/config/caching.js
 var require_caching = __commonJS({
-  "node_modules/@babel/core/lib/config/caching.js"(exports) {
+  "node_modules/@babel/core/lib/config/caching.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.assertSimpleType = assertSimpleType;
-    exports.makeStrongCache = makeStrongCache;
-    exports.makeStrongCacheSync = makeStrongCacheSync;
-    exports.makeWeakCache = makeWeakCache;
-    exports.makeWeakCacheSync = makeWeakCacheSync;
+    exports2.assertSimpleType = assertSimpleType;
+    exports2.makeStrongCache = makeStrongCache;
+    exports2.makeStrongCacheSync = makeStrongCacheSync;
+    exports2.makeWeakCache = makeWeakCache;
+    exports2.makeWeakCacheSync = makeWeakCacheSync;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -51233,14 +54926,14 @@ var require_caching = __commonJS({
 
 // node_modules/@babel/core/lib/gensync-utils/fs.js
 var require_fs = __commonJS({
-  "node_modules/@babel/core/lib/gensync-utils/fs.js"(exports) {
+  "node_modules/@babel/core/lib/gensync-utils/fs.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.stat = exports.readFile = void 0;
+    exports2.stat = exports2.readFile = void 0;
     function _fs() {
-      const data = __require("fs");
+      const data = require("fs");
       _fs = function() {
         return data;
       };
@@ -51253,11 +54946,11 @@ var require_fs = __commonJS({
       };
       return data;
     }
-    var readFile = exports.readFile = _gensync()({
+    var readFile = exports2.readFile = _gensync()({
       sync: _fs().readFileSync,
       errback: _fs().readFile
     });
-    var stat = exports.stat = _gensync()({
+    var stat = exports2.stat = _gensync()({
       sync: _fs().statSync,
       errback: _fs().stat
     });
@@ -51266,16 +54959,16 @@ var require_fs = __commonJS({
 
 // node_modules/@babel/core/lib/config/files/utils.js
 var require_utils2 = __commonJS({
-  "node_modules/@babel/core/lib/config/files/utils.js"(exports) {
+  "node_modules/@babel/core/lib/config/files/utils.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.makeStaticFileCache = makeStaticFileCache;
+    exports2.makeStaticFileCache = makeStaticFileCache;
     var _caching = require_caching();
     var fs2 = require_fs();
     function _fs2() {
-      const data = __require("fs");
+      const data = require("fs");
       _fs2 = function() {
         return data;
       };
@@ -51306,15 +54999,15 @@ var require_utils2 = __commonJS({
 
 // node_modules/@babel/core/lib/errors/rewrite-stack-trace.js
 var require_rewrite_stack_trace = __commonJS({
-  "node_modules/@babel/core/lib/errors/rewrite-stack-trace.js"(exports) {
+  "node_modules/@babel/core/lib/errors/rewrite-stack-trace.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.beginHiddenCallStack = beginHiddenCallStack;
-    exports.endHiddenCallStack = endHiddenCallStack;
-    exports.expectedError = expectedError;
-    exports.injectVirtualStackFrame = injectVirtualStackFrame;
+    exports2.beginHiddenCallStack = beginHiddenCallStack;
+    exports2.endHiddenCallStack = endHiddenCallStack;
+    exports2.expectedError = expectedError;
+    exports2.injectVirtualStackFrame = injectVirtualStackFrame;
     var _Object$getOwnPropert;
     var ErrorToString = Function.call.bind(Error.prototype.toString);
     var SUPPORTED = !!Error.captureStackTrace && ((_Object$getOwnPropert = Object.getOwnPropertyDescriptor(Error, "stackTraceLimit")) == null ? void 0 : _Object$getOwnPropert.writable) === true;
@@ -51414,12 +55107,12 @@ var require_rewrite_stack_trace = __commonJS({
 
 // node_modules/@babel/core/lib/errors/config-error.js
 var require_config_error = __commonJS({
-  "node_modules/@babel/core/lib/errors/config-error.js"(exports) {
+  "node_modules/@babel/core/lib/errors/config-error.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _rewriteStackTrace = require_rewrite_stack_trace();
     var ConfigError = class extends Error {
       constructor(message, filename) {
@@ -51429,20 +55122,20 @@ var require_config_error = __commonJS({
           (0, _rewriteStackTrace.injectVirtualStackFrame)(this, filename);
       }
     };
-    exports.default = ConfigError;
+    exports2.default = ConfigError;
   }
 });
 
 // node_modules/@babel/core/lib/config/files/package.js
 var require_package = __commonJS({
-  "node_modules/@babel/core/lib/config/files/package.js"(exports) {
+  "node_modules/@babel/core/lib/config/files/package.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.findPackageData = findPackageData;
+    exports2.findPackageData = findPackageData;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -51499,18 +55192,18 @@ var require_package = __commonJS({
 
 // node_modules/json5/lib/unicode.js
 var require_unicode = __commonJS({
-  "node_modules/json5/lib/unicode.js"(exports, module) {
-    module.exports.Space_Separator = /[\u1680\u2000-\u200A\u202F\u205F\u3000]/;
-    module.exports.ID_Start = /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u0860-\u086A\u08A0-\u08B4\u08B6-\u08BD\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u09FC\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0AF9\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58-\u0C5A\u0C60\u0C61\u0C80\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D54-\u0D56\u0D5F-\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u1884\u1887-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1C80-\u1C88\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2E2F\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312E\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FEA\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA7AE\uA7B0-\uA7B7\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA8FD\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB65\uAB70-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDE80-\uDE9C\uDEA0-\uDED0\uDF00-\uDF1F\uDF2D-\uDF4A\uDF50-\uDF75\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCB0-\uDCD3\uDCD8-\uDCFB\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDCE0-\uDCF2\uDCF4\uDCF5\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00\uDE10-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE4\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48\uDC80-\uDCB2\uDCC0-\uDCF2]|\uD804[\uDC03-\uDC37\uDC83-\uDCAF\uDCD0-\uDCE8\uDD03-\uDD26\uDD50-\uDD72\uDD76\uDD83-\uDDB2\uDDC1-\uDDC4\uDDDA\uDDDC\uDE00-\uDE11\uDE13-\uDE2B\uDE80-\uDE86\uDE88\uDE8A-\uDE8D\uDE8F-\uDE9D\uDE9F-\uDEA8\uDEB0-\uDEDE\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3D\uDF50\uDF5D-\uDF61]|\uD805[\uDC00-\uDC34\uDC47-\uDC4A\uDC80-\uDCAF\uDCC4\uDCC5\uDCC7\uDD80-\uDDAE\uDDD8-\uDDDB\uDE00-\uDE2F\uDE44\uDE80-\uDEAA\uDF00-\uDF19]|\uD806[\uDCA0-\uDCDF\uDCFF\uDE00\uDE0B-\uDE32\uDE3A\uDE50\uDE5C-\uDE83\uDE86-\uDE89\uDEC0-\uDEF8]|\uD807[\uDC00-\uDC08\uDC0A-\uDC2E\uDC40\uDC72-\uDC8F\uDD00-\uDD06\uDD08\uDD09\uDD0B-\uDD30\uDD46]|\uD808[\uDC00-\uDF99]|\uD809[\uDC00-\uDC6E\uDC80-\uDD43]|[\uD80C\uD81C-\uD820\uD840-\uD868\uD86A-\uD86C\uD86F-\uD872\uD874-\uD879][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD811[\uDC00-\uDE46]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDED0-\uDEED\uDF00-\uDF2F\uDF40-\uDF43\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50\uDF93-\uDF9F\uDFE0\uDFE1]|\uD821[\uDC00-\uDFEC]|\uD822[\uDC00-\uDEF2]|\uD82C[\uDC00-\uDD1E\uDD70-\uDEFB]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB]|\uD83A[\uDC00-\uDCC4\uDD00-\uDD43]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D\uDC20-\uDFFF]|\uD873[\uDC00-\uDEA1\uDEB0-\uDFFF]|\uD87A[\uDC00-\uDFE0]|\uD87E[\uDC00-\uDE1D]/;
-    module.exports.ID_Continue = /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u0860-\u086A\u08A0-\u08B4\u08B6-\u08BD\u08D4-\u08E1\u08E3-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u09FC\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0AF9-\u0AFF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58-\u0C5A\u0C60-\u0C63\u0C66-\u0C6F\u0C80-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D00-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D54-\u0D57\u0D5F-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19D9\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1C80-\u1C88\u1CD0-\u1CD2\u1CD4-\u1CF9\u1D00-\u1DF9\u1DFB-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u2E2F\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099\u309A\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312E\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FEA\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA7AE\uA7B0-\uA7B7\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C5\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA8FD\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB65\uAB70-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2F\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDDFD\uDE80-\uDE9C\uDEA0-\uDED0\uDEE0\uDF00-\uDF1F\uDF2D-\uDF4A\uDF50-\uDF7A\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCA0-\uDCA9\uDCB0-\uDCD3\uDCD8-\uDCFB\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDCE0-\uDCF2\uDCF4\uDCF5\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00-\uDE03\uDE05\uDE06\uDE0C-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE38-\uDE3A\uDE3F\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE6\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48\uDC80-\uDCB2\uDCC0-\uDCF2]|\uD804[\uDC00-\uDC46\uDC66-\uDC6F\uDC7F-\uDCBA\uDCD0-\uDCE8\uDCF0-\uDCF9\uDD00-\uDD34\uDD36-\uDD3F\uDD50-\uDD73\uDD76\uDD80-\uDDC4\uDDCA-\uDDCC\uDDD0-\uDDDA\uDDDC\uDE00-\uDE11\uDE13-\uDE37\uDE3E\uDE80-\uDE86\uDE88\uDE8A-\uDE8D\uDE8F-\uDE9D\uDE9F-\uDEA8\uDEB0-\uDEEA\uDEF0-\uDEF9\uDF00-\uDF03\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3C-\uDF44\uDF47\uDF48\uDF4B-\uDF4D\uDF50\uDF57\uDF5D-\uDF63\uDF66-\uDF6C\uDF70-\uDF74]|\uD805[\uDC00-\uDC4A\uDC50-\uDC59\uDC80-\uDCC5\uDCC7\uDCD0-\uDCD9\uDD80-\uDDB5\uDDB8-\uDDC0\uDDD8-\uDDDD\uDE00-\uDE40\uDE44\uDE50-\uDE59\uDE80-\uDEB7\uDEC0-\uDEC9\uDF00-\uDF19\uDF1D-\uDF2B\uDF30-\uDF39]|\uD806[\uDCA0-\uDCE9\uDCFF\uDE00-\uDE3E\uDE47\uDE50-\uDE83\uDE86-\uDE99\uDEC0-\uDEF8]|\uD807[\uDC00-\uDC08\uDC0A-\uDC36\uDC38-\uDC40\uDC50-\uDC59\uDC72-\uDC8F\uDC92-\uDCA7\uDCA9-\uDCB6\uDD00-\uDD06\uDD08\uDD09\uDD0B-\uDD36\uDD3A\uDD3C\uDD3D\uDD3F-\uDD47\uDD50-\uDD59]|\uD808[\uDC00-\uDF99]|\uD809[\uDC00-\uDC6E\uDC80-\uDD43]|[\uD80C\uD81C-\uD820\uD840-\uD868\uD86A-\uD86C\uD86F-\uD872\uD874-\uD879][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD811[\uDC00-\uDE46]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDE60-\uDE69\uDED0-\uDEED\uDEF0-\uDEF4\uDF00-\uDF36\uDF40-\uDF43\uDF50-\uDF59\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50-\uDF7E\uDF8F-\uDF9F\uDFE0\uDFE1]|\uD821[\uDC00-\uDFEC]|\uD822[\uDC00-\uDEF2]|\uD82C[\uDC00-\uDD1E\uDD70-\uDEFB]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99\uDC9D\uDC9E]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72\uDD7B-\uDD82\uDD85-\uDD8B\uDDAA-\uDDAD\uDE42-\uDE44]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB\uDFCE-\uDFFF]|\uD836[\uDE00-\uDE36\uDE3B-\uDE6C\uDE75\uDE84\uDE9B-\uDE9F\uDEA1-\uDEAF]|\uD838[\uDC00-\uDC06\uDC08-\uDC18\uDC1B-\uDC21\uDC23\uDC24\uDC26-\uDC2A]|\uD83A[\uDC00-\uDCC4\uDCD0-\uDCD6\uDD00-\uDD4A\uDD50-\uDD59]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D\uDC20-\uDFFF]|\uD873[\uDC00-\uDEA1\uDEB0-\uDFFF]|\uD87A[\uDC00-\uDFE0]|\uD87E[\uDC00-\uDE1D]|\uDB40[\uDD00-\uDDEF]/;
+  "node_modules/json5/lib/unicode.js"(exports2, module2) {
+    module2.exports.Space_Separator = /[\u1680\u2000-\u200A\u202F\u205F\u3000]/;
+    module2.exports.ID_Start = /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u0860-\u086A\u08A0-\u08B4\u08B6-\u08BD\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u09FC\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0AF9\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58-\u0C5A\u0C60\u0C61\u0C80\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D54-\u0D56\u0D5F-\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u1884\u1887-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1C80-\u1C88\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2E2F\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312E\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FEA\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA7AE\uA7B0-\uA7B7\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA8FD\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB65\uAB70-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDE80-\uDE9C\uDEA0-\uDED0\uDF00-\uDF1F\uDF2D-\uDF4A\uDF50-\uDF75\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCB0-\uDCD3\uDCD8-\uDCFB\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDCE0-\uDCF2\uDCF4\uDCF5\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00\uDE10-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE4\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48\uDC80-\uDCB2\uDCC0-\uDCF2]|\uD804[\uDC03-\uDC37\uDC83-\uDCAF\uDCD0-\uDCE8\uDD03-\uDD26\uDD50-\uDD72\uDD76\uDD83-\uDDB2\uDDC1-\uDDC4\uDDDA\uDDDC\uDE00-\uDE11\uDE13-\uDE2B\uDE80-\uDE86\uDE88\uDE8A-\uDE8D\uDE8F-\uDE9D\uDE9F-\uDEA8\uDEB0-\uDEDE\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3D\uDF50\uDF5D-\uDF61]|\uD805[\uDC00-\uDC34\uDC47-\uDC4A\uDC80-\uDCAF\uDCC4\uDCC5\uDCC7\uDD80-\uDDAE\uDDD8-\uDDDB\uDE00-\uDE2F\uDE44\uDE80-\uDEAA\uDF00-\uDF19]|\uD806[\uDCA0-\uDCDF\uDCFF\uDE00\uDE0B-\uDE32\uDE3A\uDE50\uDE5C-\uDE83\uDE86-\uDE89\uDEC0-\uDEF8]|\uD807[\uDC00-\uDC08\uDC0A-\uDC2E\uDC40\uDC72-\uDC8F\uDD00-\uDD06\uDD08\uDD09\uDD0B-\uDD30\uDD46]|\uD808[\uDC00-\uDF99]|\uD809[\uDC00-\uDC6E\uDC80-\uDD43]|[\uD80C\uD81C-\uD820\uD840-\uD868\uD86A-\uD86C\uD86F-\uD872\uD874-\uD879][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD811[\uDC00-\uDE46]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDED0-\uDEED\uDF00-\uDF2F\uDF40-\uDF43\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50\uDF93-\uDF9F\uDFE0\uDFE1]|\uD821[\uDC00-\uDFEC]|\uD822[\uDC00-\uDEF2]|\uD82C[\uDC00-\uDD1E\uDD70-\uDEFB]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB]|\uD83A[\uDC00-\uDCC4\uDD00-\uDD43]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D\uDC20-\uDFFF]|\uD873[\uDC00-\uDEA1\uDEB0-\uDFFF]|\uD87A[\uDC00-\uDFE0]|\uD87E[\uDC00-\uDE1D]/;
+    module2.exports.ID_Continue = /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u0860-\u086A\u08A0-\u08B4\u08B6-\u08BD\u08D4-\u08E1\u08E3-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u09FC\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0AF9-\u0AFF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58-\u0C5A\u0C60-\u0C63\u0C66-\u0C6F\u0C80-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D00-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D54-\u0D57\u0D5F-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19D9\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1C80-\u1C88\u1CD0-\u1CD2\u1CD4-\u1CF9\u1D00-\u1DF9\u1DFB-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u2E2F\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099\u309A\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312E\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FEA\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA7AE\uA7B0-\uA7B7\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C5\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA8FD\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB65\uAB70-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2F\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDDFD\uDE80-\uDE9C\uDEA0-\uDED0\uDEE0\uDF00-\uDF1F\uDF2D-\uDF4A\uDF50-\uDF7A\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCA0-\uDCA9\uDCB0-\uDCD3\uDCD8-\uDCFB\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDCE0-\uDCF2\uDCF4\uDCF5\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00-\uDE03\uDE05\uDE06\uDE0C-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE38-\uDE3A\uDE3F\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE6\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48\uDC80-\uDCB2\uDCC0-\uDCF2]|\uD804[\uDC00-\uDC46\uDC66-\uDC6F\uDC7F-\uDCBA\uDCD0-\uDCE8\uDCF0-\uDCF9\uDD00-\uDD34\uDD36-\uDD3F\uDD50-\uDD73\uDD76\uDD80-\uDDC4\uDDCA-\uDDCC\uDDD0-\uDDDA\uDDDC\uDE00-\uDE11\uDE13-\uDE37\uDE3E\uDE80-\uDE86\uDE88\uDE8A-\uDE8D\uDE8F-\uDE9D\uDE9F-\uDEA8\uDEB0-\uDEEA\uDEF0-\uDEF9\uDF00-\uDF03\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3C-\uDF44\uDF47\uDF48\uDF4B-\uDF4D\uDF50\uDF57\uDF5D-\uDF63\uDF66-\uDF6C\uDF70-\uDF74]|\uD805[\uDC00-\uDC4A\uDC50-\uDC59\uDC80-\uDCC5\uDCC7\uDCD0-\uDCD9\uDD80-\uDDB5\uDDB8-\uDDC0\uDDD8-\uDDDD\uDE00-\uDE40\uDE44\uDE50-\uDE59\uDE80-\uDEB7\uDEC0-\uDEC9\uDF00-\uDF19\uDF1D-\uDF2B\uDF30-\uDF39]|\uD806[\uDCA0-\uDCE9\uDCFF\uDE00-\uDE3E\uDE47\uDE50-\uDE83\uDE86-\uDE99\uDEC0-\uDEF8]|\uD807[\uDC00-\uDC08\uDC0A-\uDC36\uDC38-\uDC40\uDC50-\uDC59\uDC72-\uDC8F\uDC92-\uDCA7\uDCA9-\uDCB6\uDD00-\uDD06\uDD08\uDD09\uDD0B-\uDD36\uDD3A\uDD3C\uDD3D\uDD3F-\uDD47\uDD50-\uDD59]|\uD808[\uDC00-\uDF99]|\uD809[\uDC00-\uDC6E\uDC80-\uDD43]|[\uD80C\uD81C-\uD820\uD840-\uD868\uD86A-\uD86C\uD86F-\uD872\uD874-\uD879][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD811[\uDC00-\uDE46]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDE60-\uDE69\uDED0-\uDEED\uDEF0-\uDEF4\uDF00-\uDF36\uDF40-\uDF43\uDF50-\uDF59\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50-\uDF7E\uDF8F-\uDF9F\uDFE0\uDFE1]|\uD821[\uDC00-\uDFEC]|\uD822[\uDC00-\uDEF2]|\uD82C[\uDC00-\uDD1E\uDD70-\uDEFB]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99\uDC9D\uDC9E]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72\uDD7B-\uDD82\uDD85-\uDD8B\uDDAA-\uDDAD\uDE42-\uDE44]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB\uDFCE-\uDFFF]|\uD836[\uDE00-\uDE36\uDE3B-\uDE6C\uDE75\uDE84\uDE9B-\uDE9F\uDEA1-\uDEAF]|\uD838[\uDC00-\uDC06\uDC08-\uDC18\uDC1B-\uDC21\uDC23\uDC24\uDC26-\uDC2A]|\uD83A[\uDC00-\uDCC4\uDCD0-\uDCD6\uDD00-\uDD4A\uDD50-\uDD59]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D\uDC20-\uDFFF]|\uD873[\uDC00-\uDEA1\uDEB0-\uDFFF]|\uD87A[\uDC00-\uDFE0]|\uD87E[\uDC00-\uDE1D]|\uDB40[\uDD00-\uDDEF]/;
   }
 });
 
 // node_modules/json5/lib/util.js
 var require_util3 = __commonJS({
-  "node_modules/json5/lib/util.js"(exports, module) {
+  "node_modules/json5/lib/util.js"(exports2, module2) {
     var unicode = require_unicode();
-    module.exports = {
+    module2.exports = {
       isSpaceSeparator(c) {
         return typeof c === "string" && unicode.Space_Separator.test(c);
       },
@@ -51532,7 +55225,7 @@ var require_util3 = __commonJS({
 
 // node_modules/json5/lib/parse.js
 var require_parse2 = __commonJS({
-  "node_modules/json5/lib/parse.js"(exports, module) {
+  "node_modules/json5/lib/parse.js"(exports2, module2) {
     var util2 = require_util3();
     var source;
     var parseState;
@@ -51543,7 +55236,7 @@ var require_parse2 = __commonJS({
     var token;
     var key;
     var root;
-    module.exports = function parse3(text2, reviver) {
+    module2.exports = function parse3(text2, reviver) {
       source = String(text2);
       parseState = "start";
       stack = [];
@@ -52379,9 +56072,9 @@ var require_parse2 = __commonJS({
 
 // node_modules/json5/lib/stringify.js
 var require_stringify = __commonJS({
-  "node_modules/json5/lib/stringify.js"(exports, module) {
+  "node_modules/json5/lib/stringify.js"(exports2, module2) {
     var util2 = require_util3();
-    module.exports = function stringify(value2, replacer, space) {
+    module2.exports = function stringify(value2, replacer, space) {
       const stack = [];
       let indent = "";
       let propertyList;
@@ -52598,27 +56291,27 @@ var require_stringify = __commonJS({
 
 // node_modules/json5/lib/index.js
 var require_lib12 = __commonJS({
-  "node_modules/json5/lib/index.js"(exports, module) {
+  "node_modules/json5/lib/index.js"(exports2, module2) {
     var parse3 = require_parse2();
     var stringify = require_stringify();
     var JSON5 = {
       parse: parse3,
       stringify
     };
-    module.exports = JSON5;
+    module2.exports = JSON5;
   }
 });
 
 // node_modules/@babel/core/lib/config/helpers/config-api.js
 var require_config_api = __commonJS({
-  "node_modules/@babel/core/lib/config/helpers/config-api.js"(exports) {
+  "node_modules/@babel/core/lib/config/helpers/config-api.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.makeConfigAPI = makeConfigAPI;
-    exports.makePluginAPI = makePluginAPI;
-    exports.makePresetAPI = makePresetAPI;
+    exports2.makeConfigAPI = makeConfigAPI;
+    exports2.makePluginAPI = makePluginAPI;
+    exports2.makePresetAPI = makePresetAPI;
     function _semver() {
       const data = require_semver();
       _semver = function() {
@@ -52699,13 +56392,13 @@ var require_config_api = __commonJS({
 
 // node_modules/@babel/core/lib/config/helpers/deep-array.js
 var require_deep_array = __commonJS({
-  "node_modules/@babel/core/lib/config/helpers/deep-array.js"(exports) {
+  "node_modules/@babel/core/lib/config/helpers/deep-array.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.finalize = finalize;
-    exports.flattenToSet = flattenToSet;
+    exports2.finalize = finalize;
+    exports2.flattenToSet = flattenToSet;
     function finalize(deepArr) {
       return Object.freeze(deepArr);
     }
@@ -52727,12 +56420,12 @@ var require_deep_array = __commonJS({
 
 // node_modules/@babel/core/lib/config/plugin.js
 var require_plugin = __commonJS({
-  "node_modules/@babel/core/lib/config/plugin.js"(exports) {
+  "node_modules/@babel/core/lib/config/plugin.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _deepArray = require_deep_array();
     var Plugin = class {
       constructor(plugin, options, key, externalDependencies = (0, _deepArray.finalize)([])) {
@@ -52756,18 +56449,18 @@ var require_plugin = __commonJS({
         this.externalDependencies = externalDependencies;
       }
     };
-    exports.default = Plugin;
+    exports2.default = Plugin;
   }
 });
 
 // node_modules/@babel/core/lib/gensync-utils/functional.js
 var require_functional = __commonJS({
-  "node_modules/@babel/core/lib/gensync-utils/functional.js"(exports) {
+  "node_modules/@babel/core/lib/gensync-utils/functional.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.once = once;
+    exports2.once = once;
     var _async = require_async();
     function once(fn) {
       let result;
@@ -52827,49 +56520,49 @@ var require_functional = __commonJS({
 
 // node_modules/node-releases/data/processed/envs.json
 var require_envs = __commonJS({
-  "node_modules/node-releases/data/processed/envs.json"(exports, module) {
-    module.exports = [{ name: "nodejs", version: "0.2.0", date: "2011-08-26", lts: false, security: false, v8: "2.3.8.0" }, { name: "nodejs", version: "0.3.0", date: "2011-08-26", lts: false, security: false, v8: "2.5.1.0" }, { name: "nodejs", version: "0.4.0", date: "2011-08-26", lts: false, security: false, v8: "3.1.2.0" }, { name: "nodejs", version: "0.5.0", date: "2011-08-26", lts: false, security: false, v8: "3.1.8.25" }, { name: "nodejs", version: "0.6.0", date: "2011-11-04", lts: false, security: false, v8: "3.6.6.6" }, { name: "nodejs", version: "0.7.0", date: "2012-01-17", lts: false, security: false, v8: "3.8.6.0" }, { name: "nodejs", version: "0.8.0", date: "2012-06-22", lts: false, security: false, v8: "3.11.10.10" }, { name: "nodejs", version: "0.9.0", date: "2012-07-20", lts: false, security: false, v8: "3.11.10.15" }, { name: "nodejs", version: "0.10.0", date: "2013-03-11", lts: false, security: false, v8: "3.14.5.8" }, { name: "nodejs", version: "0.11.0", date: "2013-03-28", lts: false, security: false, v8: "3.17.13.0" }, { name: "nodejs", version: "0.12.0", date: "2015-02-06", lts: false, security: false, v8: "3.28.73.0" }, { name: "nodejs", version: "4.0.0", date: "2015-09-08", lts: false, security: false, v8: "4.5.103.30" }, { name: "nodejs", version: "4.1.0", date: "2015-09-17", lts: false, security: false, v8: "4.5.103.33" }, { name: "nodejs", version: "4.2.0", date: "2015-10-12", lts: "Argon", security: false, v8: "4.5.103.35" }, { name: "nodejs", version: "4.3.0", date: "2016-02-09", lts: "Argon", security: false, v8: "4.5.103.35" }, { name: "nodejs", version: "4.4.0", date: "2016-03-08", lts: "Argon", security: false, v8: "4.5.103.35" }, { name: "nodejs", version: "4.5.0", date: "2016-08-16", lts: "Argon", security: false, v8: "4.5.103.37" }, { name: "nodejs", version: "4.6.0", date: "2016-09-27", lts: "Argon", security: true, v8: "4.5.103.37" }, { name: "nodejs", version: "4.7.0", date: "2016-12-06", lts: "Argon", security: false, v8: "4.5.103.43" }, { name: "nodejs", version: "4.8.0", date: "2017-02-21", lts: "Argon", security: false, v8: "4.5.103.45" }, { name: "nodejs", version: "4.9.0", date: "2018-03-28", lts: "Argon", security: true, v8: "4.5.103.53" }, { name: "nodejs", version: "5.0.0", date: "2015-10-29", lts: false, security: false, v8: "4.6.85.28" }, { name: "nodejs", version: "5.1.0", date: "2015-11-17", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.2.0", date: "2015-12-09", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.3.0", date: "2015-12-15", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.4.0", date: "2016-01-06", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.5.0", date: "2016-01-21", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.6.0", date: "2016-02-09", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.7.0", date: "2016-02-23", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.8.0", date: "2016-03-09", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.9.0", date: "2016-03-16", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.10.0", date: "2016-04-01", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.11.0", date: "2016-04-21", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.12.0", date: "2016-06-23", lts: false, security: false, v8: "4.6.85.32" }, { name: "nodejs", version: "6.0.0", date: "2016-04-26", lts: false, security: false, v8: "5.0.71.35" }, { name: "nodejs", version: "6.1.0", date: "2016-05-05", lts: false, security: false, v8: "5.0.71.35" }, { name: "nodejs", version: "6.2.0", date: "2016-05-17", lts: false, security: false, v8: "5.0.71.47" }, { name: "nodejs", version: "6.3.0", date: "2016-07-06", lts: false, security: false, v8: "5.0.71.52" }, { name: "nodejs", version: "6.4.0", date: "2016-08-12", lts: false, security: false, v8: "5.0.71.60" }, { name: "nodejs", version: "6.5.0", date: "2016-08-26", lts: false, security: false, v8: "5.1.281.81" }, { name: "nodejs", version: "6.6.0", date: "2016-09-14", lts: false, security: false, v8: "5.1.281.83" }, { name: "nodejs", version: "6.7.0", date: "2016-09-27", lts: false, security: true, v8: "5.1.281.83" }, { name: "nodejs", version: "6.8.0", date: "2016-10-12", lts: false, security: false, v8: "5.1.281.84" }, { name: "nodejs", version: "6.9.0", date: "2016-10-18", lts: "Boron", security: false, v8: "5.1.281.84" }, { name: "nodejs", version: "6.10.0", date: "2017-02-21", lts: "Boron", security: false, v8: "5.1.281.93" }, { name: "nodejs", version: "6.11.0", date: "2017-06-06", lts: "Boron", security: false, v8: "5.1.281.102" }, { name: "nodejs", version: "6.12.0", date: "2017-11-06", lts: "Boron", security: false, v8: "5.1.281.108" }, { name: "nodejs", version: "6.13.0", date: "2018-02-10", lts: "Boron", security: false, v8: "5.1.281.111" }, { name: "nodejs", version: "6.14.0", date: "2018-03-28", lts: "Boron", security: true, v8: "5.1.281.111" }, { name: "nodejs", version: "6.15.0", date: "2018-11-27", lts: "Boron", security: true, v8: "5.1.281.111" }, { name: "nodejs", version: "6.16.0", date: "2018-12-26", lts: "Boron", security: false, v8: "5.1.281.111" }, { name: "nodejs", version: "6.17.0", date: "2019-02-28", lts: "Boron", security: true, v8: "5.1.281.111" }, { name: "nodejs", version: "7.0.0", date: "2016-10-25", lts: false, security: false, v8: "5.4.500.36" }, { name: "nodejs", version: "7.1.0", date: "2016-11-08", lts: false, security: false, v8: "5.4.500.36" }, { name: "nodejs", version: "7.2.0", date: "2016-11-22", lts: false, security: false, v8: "5.4.500.43" }, { name: "nodejs", version: "7.3.0", date: "2016-12-20", lts: false, security: false, v8: "5.4.500.45" }, { name: "nodejs", version: "7.4.0", date: "2017-01-04", lts: false, security: false, v8: "5.4.500.45" }, { name: "nodejs", version: "7.5.0", date: "2017-01-31", lts: false, security: false, v8: "5.4.500.48" }, { name: "nodejs", version: "7.6.0", date: "2017-02-21", lts: false, security: false, v8: "5.5.372.40" }, { name: "nodejs", version: "7.7.0", date: "2017-02-28", lts: false, security: false, v8: "5.5.372.41" }, { name: "nodejs", version: "7.8.0", date: "2017-03-29", lts: false, security: false, v8: "5.5.372.43" }, { name: "nodejs", version: "7.9.0", date: "2017-04-11", lts: false, security: false, v8: "5.5.372.43" }, { name: "nodejs", version: "7.10.0", date: "2017-05-02", lts: false, security: false, v8: "5.5.372.43" }, { name: "nodejs", version: "8.0.0", date: "2017-05-30", lts: false, security: false, v8: "5.8.283.41" }, { name: "nodejs", version: "8.1.0", date: "2017-06-08", lts: false, security: false, v8: "5.8.283.41" }, { name: "nodejs", version: "8.2.0", date: "2017-07-19", lts: false, security: false, v8: "5.8.283.41" }, { name: "nodejs", version: "8.3.0", date: "2017-08-08", lts: false, security: false, v8: "6.0.286.52" }, { name: "nodejs", version: "8.4.0", date: "2017-08-15", lts: false, security: false, v8: "6.0.286.52" }, { name: "nodejs", version: "8.5.0", date: "2017-09-12", lts: false, security: false, v8: "6.0.287.53" }, { name: "nodejs", version: "8.6.0", date: "2017-09-26", lts: false, security: false, v8: "6.0.287.53" }, { name: "nodejs", version: "8.7.0", date: "2017-10-11", lts: false, security: false, v8: "6.1.534.42" }, { name: "nodejs", version: "8.8.0", date: "2017-10-24", lts: false, security: false, v8: "6.1.534.42" }, { name: "nodejs", version: "8.9.0", date: "2017-10-31", lts: "Carbon", security: false, v8: "6.1.534.46" }, { name: "nodejs", version: "8.10.0", date: "2018-03-06", lts: "Carbon", security: false, v8: "6.2.414.50" }, { name: "nodejs", version: "8.11.0", date: "2018-03-28", lts: "Carbon", security: true, v8: "6.2.414.50" }, { name: "nodejs", version: "8.12.0", date: "2018-09-10", lts: "Carbon", security: false, v8: "6.2.414.66" }, { name: "nodejs", version: "8.13.0", date: "2018-11-20", lts: "Carbon", security: false, v8: "6.2.414.72" }, { name: "nodejs", version: "8.14.0", date: "2018-11-27", lts: "Carbon", security: true, v8: "6.2.414.72" }, { name: "nodejs", version: "8.15.0", date: "2018-12-26", lts: "Carbon", security: false, v8: "6.2.414.75" }, { name: "nodejs", version: "8.16.0", date: "2019-04-16", lts: "Carbon", security: false, v8: "6.2.414.77" }, { name: "nodejs", version: "8.17.0", date: "2019-12-17", lts: "Carbon", security: true, v8: "6.2.414.78" }, { name: "nodejs", version: "9.0.0", date: "2017-10-31", lts: false, security: false, v8: "6.2.414.32" }, { name: "nodejs", version: "9.1.0", date: "2017-11-07", lts: false, security: false, v8: "6.2.414.32" }, { name: "nodejs", version: "9.2.0", date: "2017-11-14", lts: false, security: false, v8: "6.2.414.44" }, { name: "nodejs", version: "9.3.0", date: "2017-12-12", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.4.0", date: "2018-01-10", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.5.0", date: "2018-01-31", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.6.0", date: "2018-02-21", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.7.0", date: "2018-03-01", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.8.0", date: "2018-03-07", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.9.0", date: "2018-03-21", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.10.0", date: "2018-03-28", lts: false, security: true, v8: "6.2.414.46" }, { name: "nodejs", version: "9.11.0", date: "2018-04-04", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "10.0.0", date: "2018-04-24", lts: false, security: false, v8: "6.6.346.24" }, { name: "nodejs", version: "10.1.0", date: "2018-05-08", lts: false, security: false, v8: "6.6.346.27" }, { name: "nodejs", version: "10.2.0", date: "2018-05-23", lts: false, security: false, v8: "6.6.346.32" }, { name: "nodejs", version: "10.3.0", date: "2018-05-29", lts: false, security: false, v8: "6.6.346.32" }, { name: "nodejs", version: "10.4.0", date: "2018-06-06", lts: false, security: false, v8: "6.7.288.43" }, { name: "nodejs", version: "10.5.0", date: "2018-06-20", lts: false, security: false, v8: "6.7.288.46" }, { name: "nodejs", version: "10.6.0", date: "2018-07-04", lts: false, security: false, v8: "6.7.288.46" }, { name: "nodejs", version: "10.7.0", date: "2018-07-18", lts: false, security: false, v8: "6.7.288.49" }, { name: "nodejs", version: "10.8.0", date: "2018-08-01", lts: false, security: false, v8: "6.7.288.49" }, { name: "nodejs", version: "10.9.0", date: "2018-08-15", lts: false, security: false, v8: "6.8.275.24" }, { name: "nodejs", version: "10.10.0", date: "2018-09-06", lts: false, security: false, v8: "6.8.275.30" }, { name: "nodejs", version: "10.11.0", date: "2018-09-19", lts: false, security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.12.0", date: "2018-10-10", lts: false, security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.13.0", date: "2018-10-30", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.14.0", date: "2018-11-27", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.15.0", date: "2018-12-26", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.16.0", date: "2019-05-28", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.17.0", date: "2019-10-22", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.18.0", date: "2019-12-17", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.19.0", date: "2020-02-05", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.20.0", date: "2020-03-26", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.21.0", date: "2020-06-02", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.22.0", date: "2020-07-21", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.23.0", date: "2020-10-27", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.24.0", date: "2021-02-23", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "11.0.0", date: "2018-10-23", lts: false, security: false, v8: "7.0.276.28" }, { name: "nodejs", version: "11.1.0", date: "2018-10-30", lts: false, security: false, v8: "7.0.276.32" }, { name: "nodejs", version: "11.2.0", date: "2018-11-15", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.3.0", date: "2018-11-27", lts: false, security: true, v8: "7.0.276.38" }, { name: "nodejs", version: "11.4.0", date: "2018-12-07", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.5.0", date: "2018-12-18", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.6.0", date: "2018-12-26", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.7.0", date: "2019-01-17", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.8.0", date: "2019-01-24", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.9.0", date: "2019-01-30", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.10.0", date: "2019-02-14", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.11.0", date: "2019-03-05", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.12.0", date: "2019-03-14", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.13.0", date: "2019-03-28", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.14.0", date: "2019-04-10", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.15.0", date: "2019-04-30", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "12.0.0", date: "2019-04-23", lts: false, security: false, v8: "7.4.288.21" }, { name: "nodejs", version: "12.1.0", date: "2019-04-29", lts: false, security: false, v8: "7.4.288.21" }, { name: "nodejs", version: "12.2.0", date: "2019-05-07", lts: false, security: false, v8: "7.4.288.21" }, { name: "nodejs", version: "12.3.0", date: "2019-05-21", lts: false, security: false, v8: "7.4.288.27" }, { name: "nodejs", version: "12.4.0", date: "2019-06-04", lts: false, security: false, v8: "7.4.288.27" }, { name: "nodejs", version: "12.5.0", date: "2019-06-26", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.6.0", date: "2019-07-03", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.7.0", date: "2019-07-23", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.8.0", date: "2019-08-06", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.9.0", date: "2019-08-20", lts: false, security: false, v8: "7.6.303.29" }, { name: "nodejs", version: "12.10.0", date: "2019-09-04", lts: false, security: false, v8: "7.6.303.29" }, { name: "nodejs", version: "12.11.0", date: "2019-09-25", lts: false, security: false, v8: "7.7.299.11" }, { name: "nodejs", version: "12.12.0", date: "2019-10-11", lts: false, security: false, v8: "7.7.299.13" }, { name: "nodejs", version: "12.13.0", date: "2019-10-21", lts: "Erbium", security: false, v8: "7.7.299.13" }, { name: "nodejs", version: "12.14.0", date: "2019-12-17", lts: "Erbium", security: true, v8: "7.7.299.13" }, { name: "nodejs", version: "12.15.0", date: "2020-02-05", lts: "Erbium", security: true, v8: "7.7.299.13" }, { name: "nodejs", version: "12.16.0", date: "2020-02-11", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.17.0", date: "2020-05-26", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.18.0", date: "2020-06-02", lts: "Erbium", security: true, v8: "7.8.279.23" }, { name: "nodejs", version: "12.19.0", date: "2020-10-06", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.20.0", date: "2020-11-24", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.21.0", date: "2021-02-23", lts: "Erbium", security: true, v8: "7.8.279.23" }, { name: "nodejs", version: "12.22.0", date: "2021-03-30", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "13.0.0", date: "2019-10-22", lts: false, security: false, v8: "7.8.279.17" }, { name: "nodejs", version: "13.1.0", date: "2019-11-05", lts: false, security: false, v8: "7.8.279.17" }, { name: "nodejs", version: "13.2.0", date: "2019-11-21", lts: false, security: false, v8: "7.9.317.23" }, { name: "nodejs", version: "13.3.0", date: "2019-12-03", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.4.0", date: "2019-12-17", lts: false, security: true, v8: "7.9.317.25" }, { name: "nodejs", version: "13.5.0", date: "2019-12-18", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.6.0", date: "2020-01-07", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.7.0", date: "2020-01-21", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.8.0", date: "2020-02-05", lts: false, security: true, v8: "7.9.317.25" }, { name: "nodejs", version: "13.9.0", date: "2020-02-18", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.10.0", date: "2020-03-04", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.11.0", date: "2020-03-12", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.12.0", date: "2020-03-26", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.13.0", date: "2020-04-14", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.14.0", date: "2020-04-29", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "14.0.0", date: "2020-04-21", lts: false, security: false, v8: "8.1.307.30" }, { name: "nodejs", version: "14.1.0", date: "2020-04-29", lts: false, security: false, v8: "8.1.307.31" }, { name: "nodejs", version: "14.2.0", date: "2020-05-05", lts: false, security: false, v8: "8.1.307.31" }, { name: "nodejs", version: "14.3.0", date: "2020-05-19", lts: false, security: false, v8: "8.1.307.31" }, { name: "nodejs", version: "14.4.0", date: "2020-06-02", lts: false, security: true, v8: "8.1.307.31" }, { name: "nodejs", version: "14.5.0", date: "2020-06-30", lts: false, security: false, v8: "8.3.110.9" }, { name: "nodejs", version: "14.6.0", date: "2020-07-20", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.7.0", date: "2020-07-29", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.8.0", date: "2020-08-11", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.9.0", date: "2020-08-27", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.10.0", date: "2020-09-08", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.11.0", date: "2020-09-15", lts: false, security: true, v8: "8.4.371.19" }, { name: "nodejs", version: "14.12.0", date: "2020-09-22", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.13.0", date: "2020-09-29", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.14.0", date: "2020-10-15", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.15.0", date: "2020-10-27", lts: "Fermium", security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.16.0", date: "2021-02-23", lts: "Fermium", security: true, v8: "8.4.371.19" }, { name: "nodejs", version: "14.17.0", date: "2021-05-11", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "14.18.0", date: "2021-09-28", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "14.19.0", date: "2022-02-01", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "14.20.0", date: "2022-07-07", lts: "Fermium", security: true, v8: "8.4.371.23" }, { name: "nodejs", version: "14.21.0", date: "2022-11-01", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "15.0.0", date: "2020-10-20", lts: false, security: false, v8: "8.6.395.16" }, { name: "nodejs", version: "15.1.0", date: "2020-11-04", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.2.0", date: "2020-11-10", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.3.0", date: "2020-11-24", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.4.0", date: "2020-12-09", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.5.0", date: "2020-12-22", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.6.0", date: "2021-01-14", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.7.0", date: "2021-01-25", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.8.0", date: "2021-02-02", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.9.0", date: "2021-02-18", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.10.0", date: "2021-02-23", lts: false, security: true, v8: "8.6.395.17" }, { name: "nodejs", version: "15.11.0", date: "2021-03-03", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.12.0", date: "2021-03-17", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.13.0", date: "2021-03-31", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.14.0", date: "2021-04-06", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "16.0.0", date: "2021-04-20", lts: false, security: false, v8: "9.0.257.17" }, { name: "nodejs", version: "16.1.0", date: "2021-05-04", lts: false, security: false, v8: "9.0.257.24" }, { name: "nodejs", version: "16.2.0", date: "2021-05-19", lts: false, security: false, v8: "9.0.257.25" }, { name: "nodejs", version: "16.3.0", date: "2021-06-03", lts: false, security: false, v8: "9.0.257.25" }, { name: "nodejs", version: "16.4.0", date: "2021-06-23", lts: false, security: false, v8: "9.1.269.36" }, { name: "nodejs", version: "16.5.0", date: "2021-07-14", lts: false, security: false, v8: "9.1.269.38" }, { name: "nodejs", version: "16.6.0", date: "2021-07-29", lts: false, security: true, v8: "9.2.230.21" }, { name: "nodejs", version: "16.7.0", date: "2021-08-18", lts: false, security: false, v8: "9.2.230.21" }, { name: "nodejs", version: "16.8.0", date: "2021-08-25", lts: false, security: false, v8: "9.2.230.21" }, { name: "nodejs", version: "16.9.0", date: "2021-09-07", lts: false, security: false, v8: "9.3.345.16" }, { name: "nodejs", version: "16.10.0", date: "2021-09-22", lts: false, security: false, v8: "9.3.345.19" }, { name: "nodejs", version: "16.11.0", date: "2021-10-08", lts: false, security: false, v8: "9.4.146.19" }, { name: "nodejs", version: "16.12.0", date: "2021-10-20", lts: false, security: false, v8: "9.4.146.19" }, { name: "nodejs", version: "16.13.0", date: "2021-10-26", lts: "Gallium", security: false, v8: "9.4.146.19" }, { name: "nodejs", version: "16.14.0", date: "2022-02-08", lts: "Gallium", security: false, v8: "9.4.146.24" }, { name: "nodejs", version: "16.15.0", date: "2022-04-26", lts: "Gallium", security: false, v8: "9.4.146.24" }, { name: "nodejs", version: "16.16.0", date: "2022-07-07", lts: "Gallium", security: true, v8: "9.4.146.24" }, { name: "nodejs", version: "16.17.0", date: "2022-08-16", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "16.18.0", date: "2022-10-12", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "16.19.0", date: "2022-12-13", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "16.20.0", date: "2023-03-28", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "17.0.0", date: "2021-10-19", lts: false, security: false, v8: "9.5.172.21" }, { name: "nodejs", version: "17.1.0", date: "2021-11-09", lts: false, security: false, v8: "9.5.172.25" }, { name: "nodejs", version: "17.2.0", date: "2021-11-30", lts: false, security: false, v8: "9.6.180.14" }, { name: "nodejs", version: "17.3.0", date: "2021-12-17", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.4.0", date: "2022-01-18", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.5.0", date: "2022-02-10", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.6.0", date: "2022-02-22", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.7.0", date: "2022-03-09", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.8.0", date: "2022-03-22", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.9.0", date: "2022-04-07", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "18.0.0", date: "2022-04-18", lts: false, security: false, v8: "10.1.124.8" }, { name: "nodejs", version: "18.1.0", date: "2022-05-03", lts: false, security: false, v8: "10.1.124.8" }, { name: "nodejs", version: "18.2.0", date: "2022-05-17", lts: false, security: false, v8: "10.1.124.8" }, { name: "nodejs", version: "18.3.0", date: "2022-06-02", lts: false, security: false, v8: "10.2.154.4" }, { name: "nodejs", version: "18.4.0", date: "2022-06-16", lts: false, security: false, v8: "10.2.154.4" }, { name: "nodejs", version: "18.5.0", date: "2022-07-06", lts: false, security: true, v8: "10.2.154.4" }, { name: "nodejs", version: "18.6.0", date: "2022-07-13", lts: false, security: false, v8: "10.2.154.13" }, { name: "nodejs", version: "18.7.0", date: "2022-07-26", lts: false, security: false, v8: "10.2.154.13" }, { name: "nodejs", version: "18.8.0", date: "2022-08-24", lts: false, security: false, v8: "10.2.154.13" }, { name: "nodejs", version: "18.9.0", date: "2022-09-07", lts: false, security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.10.0", date: "2022-09-28", lts: false, security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.11.0", date: "2022-10-13", lts: false, security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.12.0", date: "2022-10-25", lts: "Hydrogen", security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.13.0", date: "2023-01-05", lts: "Hydrogen", security: false, v8: "10.2.154.23" }, { name: "nodejs", version: "18.14.0", date: "2023-02-01", lts: "Hydrogen", security: false, v8: "10.2.154.23" }, { name: "nodejs", version: "18.15.0", date: "2023-03-05", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.16.0", date: "2023-04-12", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.17.0", date: "2023-07-18", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.18.0", date: "2023-09-18", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.19.0", date: "2023-11-29", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.20.0", date: "2024-03-26", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "19.0.0", date: "2022-10-17", lts: false, security: false, v8: "10.7.193.13" }, { name: "nodejs", version: "19.1.0", date: "2022-11-14", lts: false, security: false, v8: "10.7.193.20" }, { name: "nodejs", version: "19.2.0", date: "2022-11-29", lts: false, security: false, v8: "10.8.168.20" }, { name: "nodejs", version: "19.3.0", date: "2022-12-14", lts: false, security: false, v8: "10.8.168.21" }, { name: "nodejs", version: "19.4.0", date: "2023-01-05", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.5.0", date: "2023-01-24", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.6.0", date: "2023-02-01", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.7.0", date: "2023-02-21", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.8.0", date: "2023-03-14", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.9.0", date: "2023-04-10", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "20.0.0", date: "2023-04-17", lts: false, security: false, v8: "11.3.244.4" }, { name: "nodejs", version: "20.1.0", date: "2023-05-03", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.2.0", date: "2023-05-16", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.3.0", date: "2023-06-08", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.4.0", date: "2023-07-04", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.5.0", date: "2023-07-19", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.6.0", date: "2023-08-23", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.7.0", date: "2023-09-18", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.8.0", date: "2023-09-28", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.9.0", date: "2023-10-24", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.10.0", date: "2023-11-22", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.11.0", date: "2024-01-09", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.12.0", date: "2024-03-26", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.13.0", date: "2024-05-07", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.14.0", date: "2024-05-28", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.15.0", date: "2024-06-20", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.16.0", date: "2024-07-24", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.17.0", date: "2024-08-21", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.18.0", date: "2024-10-03", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "21.0.0", date: "2023-10-17", lts: false, security: false, v8: "11.8.172.13" }, { name: "nodejs", version: "21.1.0", date: "2023-10-24", lts: false, security: false, v8: "11.8.172.15" }, { name: "nodejs", version: "21.2.0", date: "2023-11-14", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.3.0", date: "2023-11-30", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.4.0", date: "2023-12-05", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.5.0", date: "2023-12-19", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.6.0", date: "2024-01-14", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.7.0", date: "2024-03-06", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "22.0.0", date: "2024-04-24", lts: false, security: false, v8: "12.4.254.14" }, { name: "nodejs", version: "22.1.0", date: "2024-05-02", lts: false, security: false, v8: "12.4.254.14" }, { name: "nodejs", version: "22.2.0", date: "2024-05-15", lts: false, security: false, v8: "12.4.254.14" }, { name: "nodejs", version: "22.3.0", date: "2024-06-11", lts: false, security: false, v8: "12.4.254.20" }, { name: "nodejs", version: "22.4.0", date: "2024-07-02", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.5.0", date: "2024-07-17", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.6.0", date: "2024-08-06", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.7.0", date: "2024-08-21", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.8.0", date: "2024-09-03", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.9.0", date: "2024-09-17", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.10.0", date: "2024-10-16", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.11.0", date: "2024-10-29", lts: "Jod", security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.12.0", date: "2024-12-02", lts: "Jod", security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "23.0.0", date: "2024-10-16", lts: false, security: false, v8: "12.9.202.26" }, { name: "nodejs", version: "23.1.0", date: "2024-10-24", lts: false, security: false, v8: "12.9.202.28" }, { name: "nodejs", version: "23.2.0", date: "2024-11-11", lts: false, security: false, v8: "12.9.202.28" }, { name: "nodejs", version: "23.3.0", date: "2024-11-20", lts: false, security: false, v8: "12.9.202.28" }];
+  "node_modules/node-releases/data/processed/envs.json"(exports2, module2) {
+    module2.exports = [{ name: "nodejs", version: "0.2.0", date: "2011-08-26", lts: false, security: false, v8: "2.3.8.0" }, { name: "nodejs", version: "0.3.0", date: "2011-08-26", lts: false, security: false, v8: "2.5.1.0" }, { name: "nodejs", version: "0.4.0", date: "2011-08-26", lts: false, security: false, v8: "3.1.2.0" }, { name: "nodejs", version: "0.5.0", date: "2011-08-26", lts: false, security: false, v8: "3.1.8.25" }, { name: "nodejs", version: "0.6.0", date: "2011-11-04", lts: false, security: false, v8: "3.6.6.6" }, { name: "nodejs", version: "0.7.0", date: "2012-01-17", lts: false, security: false, v8: "3.8.6.0" }, { name: "nodejs", version: "0.8.0", date: "2012-06-22", lts: false, security: false, v8: "3.11.10.10" }, { name: "nodejs", version: "0.9.0", date: "2012-07-20", lts: false, security: false, v8: "3.11.10.15" }, { name: "nodejs", version: "0.10.0", date: "2013-03-11", lts: false, security: false, v8: "3.14.5.8" }, { name: "nodejs", version: "0.11.0", date: "2013-03-28", lts: false, security: false, v8: "3.17.13.0" }, { name: "nodejs", version: "0.12.0", date: "2015-02-06", lts: false, security: false, v8: "3.28.73.0" }, { name: "nodejs", version: "4.0.0", date: "2015-09-08", lts: false, security: false, v8: "4.5.103.30" }, { name: "nodejs", version: "4.1.0", date: "2015-09-17", lts: false, security: false, v8: "4.5.103.33" }, { name: "nodejs", version: "4.2.0", date: "2015-10-12", lts: "Argon", security: false, v8: "4.5.103.35" }, { name: "nodejs", version: "4.3.0", date: "2016-02-09", lts: "Argon", security: false, v8: "4.5.103.35" }, { name: "nodejs", version: "4.4.0", date: "2016-03-08", lts: "Argon", security: false, v8: "4.5.103.35" }, { name: "nodejs", version: "4.5.0", date: "2016-08-16", lts: "Argon", security: false, v8: "4.5.103.37" }, { name: "nodejs", version: "4.6.0", date: "2016-09-27", lts: "Argon", security: true, v8: "4.5.103.37" }, { name: "nodejs", version: "4.7.0", date: "2016-12-06", lts: "Argon", security: false, v8: "4.5.103.43" }, { name: "nodejs", version: "4.8.0", date: "2017-02-21", lts: "Argon", security: false, v8: "4.5.103.45" }, { name: "nodejs", version: "4.9.0", date: "2018-03-28", lts: "Argon", security: true, v8: "4.5.103.53" }, { name: "nodejs", version: "5.0.0", date: "2015-10-29", lts: false, security: false, v8: "4.6.85.28" }, { name: "nodejs", version: "5.1.0", date: "2015-11-17", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.2.0", date: "2015-12-09", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.3.0", date: "2015-12-15", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.4.0", date: "2016-01-06", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.5.0", date: "2016-01-21", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.6.0", date: "2016-02-09", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.7.0", date: "2016-02-23", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.8.0", date: "2016-03-09", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.9.0", date: "2016-03-16", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.10.0", date: "2016-04-01", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.11.0", date: "2016-04-21", lts: false, security: false, v8: "4.6.85.31" }, { name: "nodejs", version: "5.12.0", date: "2016-06-23", lts: false, security: false, v8: "4.6.85.32" }, { name: "nodejs", version: "6.0.0", date: "2016-04-26", lts: false, security: false, v8: "5.0.71.35" }, { name: "nodejs", version: "6.1.0", date: "2016-05-05", lts: false, security: false, v8: "5.0.71.35" }, { name: "nodejs", version: "6.2.0", date: "2016-05-17", lts: false, security: false, v8: "5.0.71.47" }, { name: "nodejs", version: "6.3.0", date: "2016-07-06", lts: false, security: false, v8: "5.0.71.52" }, { name: "nodejs", version: "6.4.0", date: "2016-08-12", lts: false, security: false, v8: "5.0.71.60" }, { name: "nodejs", version: "6.5.0", date: "2016-08-26", lts: false, security: false, v8: "5.1.281.81" }, { name: "nodejs", version: "6.6.0", date: "2016-09-14", lts: false, security: false, v8: "5.1.281.83" }, { name: "nodejs", version: "6.7.0", date: "2016-09-27", lts: false, security: true, v8: "5.1.281.83" }, { name: "nodejs", version: "6.8.0", date: "2016-10-12", lts: false, security: false, v8: "5.1.281.84" }, { name: "nodejs", version: "6.9.0", date: "2016-10-18", lts: "Boron", security: false, v8: "5.1.281.84" }, { name: "nodejs", version: "6.10.0", date: "2017-02-21", lts: "Boron", security: false, v8: "5.1.281.93" }, { name: "nodejs", version: "6.11.0", date: "2017-06-06", lts: "Boron", security: false, v8: "5.1.281.102" }, { name: "nodejs", version: "6.12.0", date: "2017-11-06", lts: "Boron", security: false, v8: "5.1.281.108" }, { name: "nodejs", version: "6.13.0", date: "2018-02-10", lts: "Boron", security: false, v8: "5.1.281.111" }, { name: "nodejs", version: "6.14.0", date: "2018-03-28", lts: "Boron", security: true, v8: "5.1.281.111" }, { name: "nodejs", version: "6.15.0", date: "2018-11-27", lts: "Boron", security: true, v8: "5.1.281.111" }, { name: "nodejs", version: "6.16.0", date: "2018-12-26", lts: "Boron", security: false, v8: "5.1.281.111" }, { name: "nodejs", version: "6.17.0", date: "2019-02-28", lts: "Boron", security: true, v8: "5.1.281.111" }, { name: "nodejs", version: "7.0.0", date: "2016-10-25", lts: false, security: false, v8: "5.4.500.36" }, { name: "nodejs", version: "7.1.0", date: "2016-11-08", lts: false, security: false, v8: "5.4.500.36" }, { name: "nodejs", version: "7.2.0", date: "2016-11-22", lts: false, security: false, v8: "5.4.500.43" }, { name: "nodejs", version: "7.3.0", date: "2016-12-20", lts: false, security: false, v8: "5.4.500.45" }, { name: "nodejs", version: "7.4.0", date: "2017-01-04", lts: false, security: false, v8: "5.4.500.45" }, { name: "nodejs", version: "7.5.0", date: "2017-01-31", lts: false, security: false, v8: "5.4.500.48" }, { name: "nodejs", version: "7.6.0", date: "2017-02-21", lts: false, security: false, v8: "5.5.372.40" }, { name: "nodejs", version: "7.7.0", date: "2017-02-28", lts: false, security: false, v8: "5.5.372.41" }, { name: "nodejs", version: "7.8.0", date: "2017-03-29", lts: false, security: false, v8: "5.5.372.43" }, { name: "nodejs", version: "7.9.0", date: "2017-04-11", lts: false, security: false, v8: "5.5.372.43" }, { name: "nodejs", version: "7.10.0", date: "2017-05-02", lts: false, security: false, v8: "5.5.372.43" }, { name: "nodejs", version: "8.0.0", date: "2017-05-30", lts: false, security: false, v8: "5.8.283.41" }, { name: "nodejs", version: "8.1.0", date: "2017-06-08", lts: false, security: false, v8: "5.8.283.41" }, { name: "nodejs", version: "8.2.0", date: "2017-07-19", lts: false, security: false, v8: "5.8.283.41" }, { name: "nodejs", version: "8.3.0", date: "2017-08-08", lts: false, security: false, v8: "6.0.286.52" }, { name: "nodejs", version: "8.4.0", date: "2017-08-15", lts: false, security: false, v8: "6.0.286.52" }, { name: "nodejs", version: "8.5.0", date: "2017-09-12", lts: false, security: false, v8: "6.0.287.53" }, { name: "nodejs", version: "8.6.0", date: "2017-09-26", lts: false, security: false, v8: "6.0.287.53" }, { name: "nodejs", version: "8.7.0", date: "2017-10-11", lts: false, security: false, v8: "6.1.534.42" }, { name: "nodejs", version: "8.8.0", date: "2017-10-24", lts: false, security: false, v8: "6.1.534.42" }, { name: "nodejs", version: "8.9.0", date: "2017-10-31", lts: "Carbon", security: false, v8: "6.1.534.46" }, { name: "nodejs", version: "8.10.0", date: "2018-03-06", lts: "Carbon", security: false, v8: "6.2.414.50" }, { name: "nodejs", version: "8.11.0", date: "2018-03-28", lts: "Carbon", security: true, v8: "6.2.414.50" }, { name: "nodejs", version: "8.12.0", date: "2018-09-10", lts: "Carbon", security: false, v8: "6.2.414.66" }, { name: "nodejs", version: "8.13.0", date: "2018-11-20", lts: "Carbon", security: false, v8: "6.2.414.72" }, { name: "nodejs", version: "8.14.0", date: "2018-11-27", lts: "Carbon", security: true, v8: "6.2.414.72" }, { name: "nodejs", version: "8.15.0", date: "2018-12-26", lts: "Carbon", security: false, v8: "6.2.414.75" }, { name: "nodejs", version: "8.16.0", date: "2019-04-16", lts: "Carbon", security: false, v8: "6.2.414.77" }, { name: "nodejs", version: "8.17.0", date: "2019-12-17", lts: "Carbon", security: true, v8: "6.2.414.78" }, { name: "nodejs", version: "9.0.0", date: "2017-10-31", lts: false, security: false, v8: "6.2.414.32" }, { name: "nodejs", version: "9.1.0", date: "2017-11-07", lts: false, security: false, v8: "6.2.414.32" }, { name: "nodejs", version: "9.2.0", date: "2017-11-14", lts: false, security: false, v8: "6.2.414.44" }, { name: "nodejs", version: "9.3.0", date: "2017-12-12", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.4.0", date: "2018-01-10", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.5.0", date: "2018-01-31", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.6.0", date: "2018-02-21", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.7.0", date: "2018-03-01", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.8.0", date: "2018-03-07", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.9.0", date: "2018-03-21", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "9.10.0", date: "2018-03-28", lts: false, security: true, v8: "6.2.414.46" }, { name: "nodejs", version: "9.11.0", date: "2018-04-04", lts: false, security: false, v8: "6.2.414.46" }, { name: "nodejs", version: "10.0.0", date: "2018-04-24", lts: false, security: false, v8: "6.6.346.24" }, { name: "nodejs", version: "10.1.0", date: "2018-05-08", lts: false, security: false, v8: "6.6.346.27" }, { name: "nodejs", version: "10.2.0", date: "2018-05-23", lts: false, security: false, v8: "6.6.346.32" }, { name: "nodejs", version: "10.3.0", date: "2018-05-29", lts: false, security: false, v8: "6.6.346.32" }, { name: "nodejs", version: "10.4.0", date: "2018-06-06", lts: false, security: false, v8: "6.7.288.43" }, { name: "nodejs", version: "10.5.0", date: "2018-06-20", lts: false, security: false, v8: "6.7.288.46" }, { name: "nodejs", version: "10.6.0", date: "2018-07-04", lts: false, security: false, v8: "6.7.288.46" }, { name: "nodejs", version: "10.7.0", date: "2018-07-18", lts: false, security: false, v8: "6.7.288.49" }, { name: "nodejs", version: "10.8.0", date: "2018-08-01", lts: false, security: false, v8: "6.7.288.49" }, { name: "nodejs", version: "10.9.0", date: "2018-08-15", lts: false, security: false, v8: "6.8.275.24" }, { name: "nodejs", version: "10.10.0", date: "2018-09-06", lts: false, security: false, v8: "6.8.275.30" }, { name: "nodejs", version: "10.11.0", date: "2018-09-19", lts: false, security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.12.0", date: "2018-10-10", lts: false, security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.13.0", date: "2018-10-30", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.14.0", date: "2018-11-27", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.15.0", date: "2018-12-26", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.16.0", date: "2019-05-28", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.17.0", date: "2019-10-22", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.18.0", date: "2019-12-17", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.19.0", date: "2020-02-05", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.20.0", date: "2020-03-26", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.21.0", date: "2020-06-02", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "10.22.0", date: "2020-07-21", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.23.0", date: "2020-10-27", lts: "Dubnium", security: false, v8: "6.8.275.32" }, { name: "nodejs", version: "10.24.0", date: "2021-02-23", lts: "Dubnium", security: true, v8: "6.8.275.32" }, { name: "nodejs", version: "11.0.0", date: "2018-10-23", lts: false, security: false, v8: "7.0.276.28" }, { name: "nodejs", version: "11.1.0", date: "2018-10-30", lts: false, security: false, v8: "7.0.276.32" }, { name: "nodejs", version: "11.2.0", date: "2018-11-15", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.3.0", date: "2018-11-27", lts: false, security: true, v8: "7.0.276.38" }, { name: "nodejs", version: "11.4.0", date: "2018-12-07", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.5.0", date: "2018-12-18", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.6.0", date: "2018-12-26", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.7.0", date: "2019-01-17", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.8.0", date: "2019-01-24", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.9.0", date: "2019-01-30", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.10.0", date: "2019-02-14", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.11.0", date: "2019-03-05", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.12.0", date: "2019-03-14", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.13.0", date: "2019-03-28", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.14.0", date: "2019-04-10", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "11.15.0", date: "2019-04-30", lts: false, security: false, v8: "7.0.276.38" }, { name: "nodejs", version: "12.0.0", date: "2019-04-23", lts: false, security: false, v8: "7.4.288.21" }, { name: "nodejs", version: "12.1.0", date: "2019-04-29", lts: false, security: false, v8: "7.4.288.21" }, { name: "nodejs", version: "12.2.0", date: "2019-05-07", lts: false, security: false, v8: "7.4.288.21" }, { name: "nodejs", version: "12.3.0", date: "2019-05-21", lts: false, security: false, v8: "7.4.288.27" }, { name: "nodejs", version: "12.4.0", date: "2019-06-04", lts: false, security: false, v8: "7.4.288.27" }, { name: "nodejs", version: "12.5.0", date: "2019-06-26", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.6.0", date: "2019-07-03", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.7.0", date: "2019-07-23", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.8.0", date: "2019-08-06", lts: false, security: false, v8: "7.5.288.22" }, { name: "nodejs", version: "12.9.0", date: "2019-08-20", lts: false, security: false, v8: "7.6.303.29" }, { name: "nodejs", version: "12.10.0", date: "2019-09-04", lts: false, security: false, v8: "7.6.303.29" }, { name: "nodejs", version: "12.11.0", date: "2019-09-25", lts: false, security: false, v8: "7.7.299.11" }, { name: "nodejs", version: "12.12.0", date: "2019-10-11", lts: false, security: false, v8: "7.7.299.13" }, { name: "nodejs", version: "12.13.0", date: "2019-10-21", lts: "Erbium", security: false, v8: "7.7.299.13" }, { name: "nodejs", version: "12.14.0", date: "2019-12-17", lts: "Erbium", security: true, v8: "7.7.299.13" }, { name: "nodejs", version: "12.15.0", date: "2020-02-05", lts: "Erbium", security: true, v8: "7.7.299.13" }, { name: "nodejs", version: "12.16.0", date: "2020-02-11", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.17.0", date: "2020-05-26", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.18.0", date: "2020-06-02", lts: "Erbium", security: true, v8: "7.8.279.23" }, { name: "nodejs", version: "12.19.0", date: "2020-10-06", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.20.0", date: "2020-11-24", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "12.21.0", date: "2021-02-23", lts: "Erbium", security: true, v8: "7.8.279.23" }, { name: "nodejs", version: "12.22.0", date: "2021-03-30", lts: "Erbium", security: false, v8: "7.8.279.23" }, { name: "nodejs", version: "13.0.0", date: "2019-10-22", lts: false, security: false, v8: "7.8.279.17" }, { name: "nodejs", version: "13.1.0", date: "2019-11-05", lts: false, security: false, v8: "7.8.279.17" }, { name: "nodejs", version: "13.2.0", date: "2019-11-21", lts: false, security: false, v8: "7.9.317.23" }, { name: "nodejs", version: "13.3.0", date: "2019-12-03", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.4.0", date: "2019-12-17", lts: false, security: true, v8: "7.9.317.25" }, { name: "nodejs", version: "13.5.0", date: "2019-12-18", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.6.0", date: "2020-01-07", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.7.0", date: "2020-01-21", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.8.0", date: "2020-02-05", lts: false, security: true, v8: "7.9.317.25" }, { name: "nodejs", version: "13.9.0", date: "2020-02-18", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.10.0", date: "2020-03-04", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.11.0", date: "2020-03-12", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.12.0", date: "2020-03-26", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.13.0", date: "2020-04-14", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "13.14.0", date: "2020-04-29", lts: false, security: false, v8: "7.9.317.25" }, { name: "nodejs", version: "14.0.0", date: "2020-04-21", lts: false, security: false, v8: "8.1.307.30" }, { name: "nodejs", version: "14.1.0", date: "2020-04-29", lts: false, security: false, v8: "8.1.307.31" }, { name: "nodejs", version: "14.2.0", date: "2020-05-05", lts: false, security: false, v8: "8.1.307.31" }, { name: "nodejs", version: "14.3.0", date: "2020-05-19", lts: false, security: false, v8: "8.1.307.31" }, { name: "nodejs", version: "14.4.0", date: "2020-06-02", lts: false, security: true, v8: "8.1.307.31" }, { name: "nodejs", version: "14.5.0", date: "2020-06-30", lts: false, security: false, v8: "8.3.110.9" }, { name: "nodejs", version: "14.6.0", date: "2020-07-20", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.7.0", date: "2020-07-29", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.8.0", date: "2020-08-11", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.9.0", date: "2020-08-27", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.10.0", date: "2020-09-08", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.11.0", date: "2020-09-15", lts: false, security: true, v8: "8.4.371.19" }, { name: "nodejs", version: "14.12.0", date: "2020-09-22", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.13.0", date: "2020-09-29", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.14.0", date: "2020-10-15", lts: false, security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.15.0", date: "2020-10-27", lts: "Fermium", security: false, v8: "8.4.371.19" }, { name: "nodejs", version: "14.16.0", date: "2021-02-23", lts: "Fermium", security: true, v8: "8.4.371.19" }, { name: "nodejs", version: "14.17.0", date: "2021-05-11", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "14.18.0", date: "2021-09-28", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "14.19.0", date: "2022-02-01", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "14.20.0", date: "2022-07-07", lts: "Fermium", security: true, v8: "8.4.371.23" }, { name: "nodejs", version: "14.21.0", date: "2022-11-01", lts: "Fermium", security: false, v8: "8.4.371.23" }, { name: "nodejs", version: "15.0.0", date: "2020-10-20", lts: false, security: false, v8: "8.6.395.16" }, { name: "nodejs", version: "15.1.0", date: "2020-11-04", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.2.0", date: "2020-11-10", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.3.0", date: "2020-11-24", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.4.0", date: "2020-12-09", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.5.0", date: "2020-12-22", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.6.0", date: "2021-01-14", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.7.0", date: "2021-01-25", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.8.0", date: "2021-02-02", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.9.0", date: "2021-02-18", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.10.0", date: "2021-02-23", lts: false, security: true, v8: "8.6.395.17" }, { name: "nodejs", version: "15.11.0", date: "2021-03-03", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.12.0", date: "2021-03-17", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.13.0", date: "2021-03-31", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "15.14.0", date: "2021-04-06", lts: false, security: false, v8: "8.6.395.17" }, { name: "nodejs", version: "16.0.0", date: "2021-04-20", lts: false, security: false, v8: "9.0.257.17" }, { name: "nodejs", version: "16.1.0", date: "2021-05-04", lts: false, security: false, v8: "9.0.257.24" }, { name: "nodejs", version: "16.2.0", date: "2021-05-19", lts: false, security: false, v8: "9.0.257.25" }, { name: "nodejs", version: "16.3.0", date: "2021-06-03", lts: false, security: false, v8: "9.0.257.25" }, { name: "nodejs", version: "16.4.0", date: "2021-06-23", lts: false, security: false, v8: "9.1.269.36" }, { name: "nodejs", version: "16.5.0", date: "2021-07-14", lts: false, security: false, v8: "9.1.269.38" }, { name: "nodejs", version: "16.6.0", date: "2021-07-29", lts: false, security: true, v8: "9.2.230.21" }, { name: "nodejs", version: "16.7.0", date: "2021-08-18", lts: false, security: false, v8: "9.2.230.21" }, { name: "nodejs", version: "16.8.0", date: "2021-08-25", lts: false, security: false, v8: "9.2.230.21" }, { name: "nodejs", version: "16.9.0", date: "2021-09-07", lts: false, security: false, v8: "9.3.345.16" }, { name: "nodejs", version: "16.10.0", date: "2021-09-22", lts: false, security: false, v8: "9.3.345.19" }, { name: "nodejs", version: "16.11.0", date: "2021-10-08", lts: false, security: false, v8: "9.4.146.19" }, { name: "nodejs", version: "16.12.0", date: "2021-10-20", lts: false, security: false, v8: "9.4.146.19" }, { name: "nodejs", version: "16.13.0", date: "2021-10-26", lts: "Gallium", security: false, v8: "9.4.146.19" }, { name: "nodejs", version: "16.14.0", date: "2022-02-08", lts: "Gallium", security: false, v8: "9.4.146.24" }, { name: "nodejs", version: "16.15.0", date: "2022-04-26", lts: "Gallium", security: false, v8: "9.4.146.24" }, { name: "nodejs", version: "16.16.0", date: "2022-07-07", lts: "Gallium", security: true, v8: "9.4.146.24" }, { name: "nodejs", version: "16.17.0", date: "2022-08-16", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "16.18.0", date: "2022-10-12", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "16.19.0", date: "2022-12-13", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "16.20.0", date: "2023-03-28", lts: "Gallium", security: false, v8: "9.4.146.26" }, { name: "nodejs", version: "17.0.0", date: "2021-10-19", lts: false, security: false, v8: "9.5.172.21" }, { name: "nodejs", version: "17.1.0", date: "2021-11-09", lts: false, security: false, v8: "9.5.172.25" }, { name: "nodejs", version: "17.2.0", date: "2021-11-30", lts: false, security: false, v8: "9.6.180.14" }, { name: "nodejs", version: "17.3.0", date: "2021-12-17", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.4.0", date: "2022-01-18", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.5.0", date: "2022-02-10", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.6.0", date: "2022-02-22", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.7.0", date: "2022-03-09", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.8.0", date: "2022-03-22", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "17.9.0", date: "2022-04-07", lts: false, security: false, v8: "9.6.180.15" }, { name: "nodejs", version: "18.0.0", date: "2022-04-18", lts: false, security: false, v8: "10.1.124.8" }, { name: "nodejs", version: "18.1.0", date: "2022-05-03", lts: false, security: false, v8: "10.1.124.8" }, { name: "nodejs", version: "18.2.0", date: "2022-05-17", lts: false, security: false, v8: "10.1.124.8" }, { name: "nodejs", version: "18.3.0", date: "2022-06-02", lts: false, security: false, v8: "10.2.154.4" }, { name: "nodejs", version: "18.4.0", date: "2022-06-16", lts: false, security: false, v8: "10.2.154.4" }, { name: "nodejs", version: "18.5.0", date: "2022-07-06", lts: false, security: true, v8: "10.2.154.4" }, { name: "nodejs", version: "18.6.0", date: "2022-07-13", lts: false, security: false, v8: "10.2.154.13" }, { name: "nodejs", version: "18.7.0", date: "2022-07-26", lts: false, security: false, v8: "10.2.154.13" }, { name: "nodejs", version: "18.8.0", date: "2022-08-24", lts: false, security: false, v8: "10.2.154.13" }, { name: "nodejs", version: "18.9.0", date: "2022-09-07", lts: false, security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.10.0", date: "2022-09-28", lts: false, security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.11.0", date: "2022-10-13", lts: false, security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.12.0", date: "2022-10-25", lts: "Hydrogen", security: false, v8: "10.2.154.15" }, { name: "nodejs", version: "18.13.0", date: "2023-01-05", lts: "Hydrogen", security: false, v8: "10.2.154.23" }, { name: "nodejs", version: "18.14.0", date: "2023-02-01", lts: "Hydrogen", security: false, v8: "10.2.154.23" }, { name: "nodejs", version: "18.15.0", date: "2023-03-05", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.16.0", date: "2023-04-12", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.17.0", date: "2023-07-18", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.18.0", date: "2023-09-18", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.19.0", date: "2023-11-29", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "18.20.0", date: "2024-03-26", lts: "Hydrogen", security: false, v8: "10.2.154.26" }, { name: "nodejs", version: "19.0.0", date: "2022-10-17", lts: false, security: false, v8: "10.7.193.13" }, { name: "nodejs", version: "19.1.0", date: "2022-11-14", lts: false, security: false, v8: "10.7.193.20" }, { name: "nodejs", version: "19.2.0", date: "2022-11-29", lts: false, security: false, v8: "10.8.168.20" }, { name: "nodejs", version: "19.3.0", date: "2022-12-14", lts: false, security: false, v8: "10.8.168.21" }, { name: "nodejs", version: "19.4.0", date: "2023-01-05", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.5.0", date: "2023-01-24", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.6.0", date: "2023-02-01", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.7.0", date: "2023-02-21", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.8.0", date: "2023-03-14", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "19.9.0", date: "2023-04-10", lts: false, security: false, v8: "10.8.168.25" }, { name: "nodejs", version: "20.0.0", date: "2023-04-17", lts: false, security: false, v8: "11.3.244.4" }, { name: "nodejs", version: "20.1.0", date: "2023-05-03", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.2.0", date: "2023-05-16", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.3.0", date: "2023-06-08", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.4.0", date: "2023-07-04", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.5.0", date: "2023-07-19", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.6.0", date: "2023-08-23", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.7.0", date: "2023-09-18", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.8.0", date: "2023-09-28", lts: false, security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.9.0", date: "2023-10-24", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.10.0", date: "2023-11-22", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.11.0", date: "2024-01-09", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.12.0", date: "2024-03-26", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.13.0", date: "2024-05-07", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.14.0", date: "2024-05-28", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.15.0", date: "2024-06-20", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.16.0", date: "2024-07-24", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.17.0", date: "2024-08-21", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "20.18.0", date: "2024-10-03", lts: "Iron", security: false, v8: "11.3.244.8" }, { name: "nodejs", version: "21.0.0", date: "2023-10-17", lts: false, security: false, v8: "11.8.172.13" }, { name: "nodejs", version: "21.1.0", date: "2023-10-24", lts: false, security: false, v8: "11.8.172.15" }, { name: "nodejs", version: "21.2.0", date: "2023-11-14", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.3.0", date: "2023-11-30", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.4.0", date: "2023-12-05", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.5.0", date: "2023-12-19", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.6.0", date: "2024-01-14", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "21.7.0", date: "2024-03-06", lts: false, security: false, v8: "11.8.172.17" }, { name: "nodejs", version: "22.0.0", date: "2024-04-24", lts: false, security: false, v8: "12.4.254.14" }, { name: "nodejs", version: "22.1.0", date: "2024-05-02", lts: false, security: false, v8: "12.4.254.14" }, { name: "nodejs", version: "22.2.0", date: "2024-05-15", lts: false, security: false, v8: "12.4.254.14" }, { name: "nodejs", version: "22.3.0", date: "2024-06-11", lts: false, security: false, v8: "12.4.254.20" }, { name: "nodejs", version: "22.4.0", date: "2024-07-02", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.5.0", date: "2024-07-17", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.6.0", date: "2024-08-06", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.7.0", date: "2024-08-21", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.8.0", date: "2024-09-03", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.9.0", date: "2024-09-17", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.10.0", date: "2024-10-16", lts: false, security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.11.0", date: "2024-10-29", lts: "Jod", security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "22.12.0", date: "2024-12-02", lts: "Jod", security: false, v8: "12.4.254.21" }, { name: "nodejs", version: "23.0.0", date: "2024-10-16", lts: false, security: false, v8: "12.9.202.26" }, { name: "nodejs", version: "23.1.0", date: "2024-10-24", lts: false, security: false, v8: "12.9.202.28" }, { name: "nodejs", version: "23.2.0", date: "2024-11-11", lts: false, security: false, v8: "12.9.202.28" }, { name: "nodejs", version: "23.3.0", date: "2024-11-20", lts: false, security: false, v8: "12.9.202.28" }];
   }
 });
 
 // node_modules/caniuse-lite/data/browsers.js
 var require_browsers = __commonJS({
-  "node_modules/caniuse-lite/data/browsers.js"(exports, module) {
-    module.exports = { A: "ie", B: "edge", C: "firefox", D: "chrome", E: "safari", F: "opera", G: "ios_saf", H: "op_mini", I: "android", J: "bb", K: "op_mob", L: "and_chr", M: "and_ff", N: "ie_mob", O: "and_uc", P: "samsung", Q: "and_qq", R: "baidu", S: "kaios" };
+  "node_modules/caniuse-lite/data/browsers.js"(exports2, module2) {
+    module2.exports = { A: "ie", B: "edge", C: "firefox", D: "chrome", E: "safari", F: "opera", G: "ios_saf", H: "op_mini", I: "android", J: "bb", K: "op_mob", L: "and_chr", M: "and_ff", N: "ie_mob", O: "and_uc", P: "samsung", Q: "and_qq", R: "baidu", S: "kaios" };
   }
 });
 
 // node_modules/caniuse-lite/dist/unpacker/browsers.js
 var require_browsers2 = __commonJS({
-  "node_modules/caniuse-lite/dist/unpacker/browsers.js"(exports, module) {
-    module.exports.browsers = require_browsers();
+  "node_modules/caniuse-lite/dist/unpacker/browsers.js"(exports2, module2) {
+    module2.exports.browsers = require_browsers();
   }
 });
 
 // node_modules/caniuse-lite/data/browserVersions.js
 var require_browserVersions = __commonJS({
-  "node_modules/caniuse-lite/data/browserVersions.js"(exports, module) {
-    module.exports = { "0": "117", "1": "20", "2": "21", "3": "22", "4": "23", "5": "24", "6": "25", "7": "26", "8": "27", "9": "118", A: "10", B: "11", C: "12", D: "7", E: "8", F: "9", G: "15", H: "80", I: "136", J: "4", K: "6", L: "13", M: "14", N: "16", O: "17", P: "18", Q: "79", R: "81", S: "83", T: "84", U: "85", V: "86", W: "87", X: "88", Y: "89", Z: "90", a: "91", b: "92", c: "93", d: "94", e: "95", f: "96", g: "97", h: "98", i: "99", j: "100", k: "101", l: "102", m: "103", n: "104", o: "105", p: "106", q: "107", r: "108", s: "109", t: "110", u: "111", v: "112", w: "113", x: "114", y: "115", z: "116", AB: "119", BB: "120", CB: "121", DB: "122", EB: "123", FB: "124", GB: "125", HB: "126", IB: "127", JB: "128", KB: "129", LB: "130", MB: "131", NB: "132", OB: "133", PB: "134", QB: "135", RB: "5", SB: "19", TB: "28", UB: "29", VB: "30", WB: "31", XB: "32", YB: "33", ZB: "34", aB: "35", bB: "36", cB: "37", dB: "38", eB: "39", fB: "40", gB: "41", hB: "42", iB: "43", jB: "44", kB: "45", lB: "46", mB: "47", nB: "48", oB: "49", pB: "50", qB: "51", rB: "52", sB: "53", tB: "54", uB: "55", vB: "56", wB: "57", xB: "58", yB: "60", zB: "62", "0B": "63", "1B": "64", "2B": "65", "3B": "66", "4B": "67", "5B": "68", "6B": "69", "7B": "70", "8B": "71", "9B": "72", AC: "73", BC: "74", CC: "75", DC: "76", EC: "77", FC: "78", GC: "137", HC: "11.1", IC: "12.1", JC: "15.5", KC: "16.0", LC: "17.0", MC: "18.0", NC: "3", OC: "59", PC: "61", QC: "82", RC: "138", SC: "139", TC: "3.2", UC: "10.1", VC: "15.2-15.3", WC: "15.4", XC: "16.1", YC: "16.2", ZC: "16.3", aC: "16.4", bC: "16.5", cC: "17.1", dC: "17.2", eC: "17.3", fC: "17.4", gC: "17.5", hC: "18.1", iC: "18.2", jC: "18.3", kC: "18.4", lC: "18.5", mC: "11.5", nC: "4.2-4.3", oC: "5.5", pC: "2", qC: "140", rC: "141", sC: "3.5", tC: "3.6", uC: "3.1", vC: "5.1", wC: "6.1", xC: "7.1", yC: "9.1", zC: "13.1", "0C": "14.1", "1C": "15.1", "2C": "15.6", "3C": "16.6", "4C": "17.6", "5C": "TP", "6C": "9.5-9.6", "7C": "10.0-10.1", "8C": "10.5", "9C": "10.6", AD: "11.6", BD: "4.0-4.1", CD: "5.0-5.1", DD: "6.0-6.1", ED: "7.0-7.1", FD: "8.1-8.4", GD: "9.0-9.2", HD: "9.3", ID: "10.0-10.2", JD: "10.3", KD: "11.0-11.2", LD: "11.3-11.4", MD: "12.0-12.1", ND: "12.2-12.5", OD: "13.0-13.1", PD: "13.2", QD: "13.3", RD: "13.4-13.7", SD: "14.0-14.4", TD: "14.5-14.8", UD: "15.0-15.1", VD: "15.6-15.8", WD: "16.6-16.7", XD: "17.6-17.7", YD: "all", ZD: "2.1", aD: "2.2", bD: "2.3", cD: "4.1", dD: "4.4", eD: "4.4.3-4.4.4", fD: "5.0-5.4", gD: "6.2-6.4", hD: "7.2-7.4", iD: "8.2", jD: "9.2", kD: "11.1-11.2", lD: "12.0", mD: "13.0", nD: "14.0", oD: "15.0", pD: "19.0", qD: "14.9", rD: "13.52", sD: "2.5", tD: "3.0-3.1" };
+  "node_modules/caniuse-lite/data/browserVersions.js"(exports2, module2) {
+    module2.exports = { "0": "117", "1": "20", "2": "21", "3": "22", "4": "23", "5": "24", "6": "25", "7": "26", "8": "27", "9": "118", A: "10", B: "11", C: "12", D: "7", E: "8", F: "9", G: "15", H: "80", I: "136", J: "4", K: "6", L: "13", M: "14", N: "16", O: "17", P: "18", Q: "79", R: "81", S: "83", T: "84", U: "85", V: "86", W: "87", X: "88", Y: "89", Z: "90", a: "91", b: "92", c: "93", d: "94", e: "95", f: "96", g: "97", h: "98", i: "99", j: "100", k: "101", l: "102", m: "103", n: "104", o: "105", p: "106", q: "107", r: "108", s: "109", t: "110", u: "111", v: "112", w: "113", x: "114", y: "115", z: "116", AB: "119", BB: "120", CB: "121", DB: "122", EB: "123", FB: "124", GB: "125", HB: "126", IB: "127", JB: "128", KB: "129", LB: "130", MB: "131", NB: "132", OB: "133", PB: "134", QB: "135", RB: "5", SB: "19", TB: "28", UB: "29", VB: "30", WB: "31", XB: "32", YB: "33", ZB: "34", aB: "35", bB: "36", cB: "37", dB: "38", eB: "39", fB: "40", gB: "41", hB: "42", iB: "43", jB: "44", kB: "45", lB: "46", mB: "47", nB: "48", oB: "49", pB: "50", qB: "51", rB: "52", sB: "53", tB: "54", uB: "55", vB: "56", wB: "57", xB: "58", yB: "60", zB: "62", "0B": "63", "1B": "64", "2B": "65", "3B": "66", "4B": "67", "5B": "68", "6B": "69", "7B": "70", "8B": "71", "9B": "72", AC: "73", BC: "74", CC: "75", DC: "76", EC: "77", FC: "78", GC: "137", HC: "11.1", IC: "12.1", JC: "15.5", KC: "16.0", LC: "17.0", MC: "18.0", NC: "3", OC: "59", PC: "61", QC: "82", RC: "138", SC: "139", TC: "3.2", UC: "10.1", VC: "15.2-15.3", WC: "15.4", XC: "16.1", YC: "16.2", ZC: "16.3", aC: "16.4", bC: "16.5", cC: "17.1", dC: "17.2", eC: "17.3", fC: "17.4", gC: "17.5", hC: "18.1", iC: "18.2", jC: "18.3", kC: "18.4", lC: "18.5", mC: "11.5", nC: "4.2-4.3", oC: "5.5", pC: "2", qC: "140", rC: "141", sC: "3.5", tC: "3.6", uC: "3.1", vC: "5.1", wC: "6.1", xC: "7.1", yC: "9.1", zC: "13.1", "0C": "14.1", "1C": "15.1", "2C": "15.6", "3C": "16.6", "4C": "17.6", "5C": "TP", "6C": "9.5-9.6", "7C": "10.0-10.1", "8C": "10.5", "9C": "10.6", AD: "11.6", BD: "4.0-4.1", CD: "5.0-5.1", DD: "6.0-6.1", ED: "7.0-7.1", FD: "8.1-8.4", GD: "9.0-9.2", HD: "9.3", ID: "10.0-10.2", JD: "10.3", KD: "11.0-11.2", LD: "11.3-11.4", MD: "12.0-12.1", ND: "12.2-12.5", OD: "13.0-13.1", PD: "13.2", QD: "13.3", RD: "13.4-13.7", SD: "14.0-14.4", TD: "14.5-14.8", UD: "15.0-15.1", VD: "15.6-15.8", WD: "16.6-16.7", XD: "17.6-17.7", YD: "all", ZD: "2.1", aD: "2.2", bD: "2.3", cD: "4.1", dD: "4.4", eD: "4.4.3-4.4.4", fD: "5.0-5.4", gD: "6.2-6.4", hD: "7.2-7.4", iD: "8.2", jD: "9.2", kD: "11.1-11.2", lD: "12.0", mD: "13.0", nD: "14.0", oD: "15.0", pD: "19.0", qD: "14.9", rD: "13.52", sD: "2.5", tD: "3.0-3.1" };
   }
 });
 
 // node_modules/caniuse-lite/dist/unpacker/browserVersions.js
 var require_browserVersions2 = __commonJS({
-  "node_modules/caniuse-lite/dist/unpacker/browserVersions.js"(exports, module) {
-    module.exports.browserVersions = require_browserVersions();
+  "node_modules/caniuse-lite/dist/unpacker/browserVersions.js"(exports2, module2) {
+    module2.exports.browserVersions = require_browserVersions();
   }
 });
 
 // node_modules/caniuse-lite/data/agents.js
 var require_agents = __commonJS({
-  "node_modules/caniuse-lite/data/agents.js"(exports, module) {
-    module.exports = { A: { A: { K: 0, D: 0, E: 0.030974, F: 0.030974, A: 0, B: 0.433636, oC: 0 }, B: "ms", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "oC", "K", "D", "E", "F", "A", "B", "", "", ""], E: "IE", F: { oC: 962323200, K: 998870400, D: 1161129600, E: 1237420800, F: 1300060800, A: 1346716800, B: 1381968e3 } }, B: { A: { "0": 3644e-6, "9": 3644e-6, C: 0, L: 0, M: 0, G: 0, N: 0, O: 0, P: 0.10932, Q: 0, H: 0, R: 0, S: 0, T: 0, U: 0, V: 0, W: 0, X: 0, Y: 0, Z: 0, a: 0, b: 0.014576, c: 0, d: 0, e: 0, f: 0, g: 0, h: 0, i: 0, j: 0, k: 0, l: 0, m: 0, n: 0, o: 0, p: 0, q: 3644e-6, r: 7288e-6, s: 0.047372, t: 3644e-6, u: 3644e-6, v: 3644e-6, w: 7288e-6, x: 0.010932, y: 3644e-6, z: 3644e-6, AB: 3644e-6, BB: 0.03644, CB: 7288e-6, DB: 0.010932, EB: 3644e-6, FB: 7288e-6, GB: 7288e-6, HB: 0.01822, IB: 0.014576, JB: 0.010932, KB: 0.010932, LB: 0.01822, MB: 0.047372, NB: 0.043728, OB: 0.058304, PB: 0.972948, QB: 3.39621, I: 7288e-6 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "C", "L", "M", "G", "N", "O", "P", "Q", "H", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "9", "AB", "BB", "CB", "DB", "EB", "FB", "GB", "HB", "IB", "JB", "KB", "LB", "MB", "NB", "OB", "PB", "QB", "I", "", "", ""], E: "Edge", F: { "0": 1694649600, "9": 1697155200, C: 1438128e3, L: 1447286400, M: 1470096e3, G: 1491868800, N: 1508198400, O: 1525046400, P: 1542067200, Q: 1579046400, H: 1581033600, R: 1586736e3, S: 1590019200, T: 1594857600, U: 1598486400, V: 1602201600, W: 1605830400, X: 161136e4, Y: 1614816e3, Z: 1618358400, a: 1622073600, b: 1626912e3, c: 1630627200, d: 1632441600, e: 1634774400, f: 1637539200, g: 1641427200, h: 1643932800, i: 1646265600, j: 1649635200, k: 1651190400, l: 1653955200, m: 1655942400, n: 1659657600, o: 1661990400, p: 1664755200, q: 1666915200, r: 1670198400, s: 1673481600, t: 1675900800, u: 1678665600, v: 1680825600, w: 1683158400, x: 1685664e3, y: 1689897600, z: 1692576e3, AB: 1698969600, BB: 1701993600, CB: 1706227200, DB: 1708732800, EB: 1711152e3, FB: 1713398400, GB: 1715990400, HB: 1718841600, IB: 1721865600, JB: 1724371200, KB: 1726704e3, LB: 1729123200, MB: 1731542400, NB: 1737417600, OB: 1740614400, PB: 1741219200, QB: 1743984e3, I: 1746316800 }, D: { C: "ms", L: "ms", M: "ms", G: "ms", N: "ms", O: "ms", P: "ms" } }, C: { A: { "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0.10932, pC: 3644e-6, NC: 0, J: 3644e-6, RB: 0, K: 0, D: 0, E: 0, F: 0, A: 0, B: 0.029152, C: 0, L: 0, M: 0, G: 0, N: 0, O: 0, P: 0, SB: 0, TB: 0, UB: 0, VB: 0, WB: 0, XB: 0, YB: 0, ZB: 0, aB: 0, bB: 0, cB: 0, dB: 0, eB: 0, fB: 0, gB: 0, hB: 0, iB: 0, jB: 0, kB: 3644e-6, lB: 0, mB: 0, nB: 0, oB: 0, pB: 0, qB: 0, rB: 0.029152, sB: 7288e-6, tB: 0, uB: 0, vB: 0, wB: 0, xB: 0, OC: 7288e-6, yB: 0, PC: 0, zB: 0, "0B": 0, "1B": 0, "2B": 0, "3B": 0, "4B": 0, "5B": 0, "6B": 0, "7B": 0, "8B": 0, "9B": 0.040084, AC: 0, BC: 0, CC: 0, DC: 0, EC: 0, FC: 0.010932, Q: 0, H: 0, R: 0, QC: 0, S: 0, T: 0, U: 0, V: 0, W: 0, X: 0, Y: 0, Z: 0, a: 0, b: 0, c: 0, d: 7288e-6, e: 0, f: 0, g: 0, h: 0, i: 0, j: 0, k: 0, l: 0, m: 0, n: 0, o: 0, p: 0, q: 0, r: 0, s: 3644e-6, t: 0, u: 0, v: 0, w: 0, x: 0, y: 0.2733, z: 0, AB: 0, BB: 3644e-6, CB: 0, DB: 0, EB: 0, FB: 0, GB: 0.014576, HB: 0, IB: 3644e-6, JB: 0.0911, KB: 0, LB: 0, MB: 3644e-6, NB: 7288e-6, OB: 0.010932, PB: 0.010932, QB: 0.025508, I: 0.207708, GC: 1.19888, RC: 0.021864, SC: 0, qC: 0, rC: 0, sC: 0, tC: 0 }, B: "moz", C: ["pC", "NC", "sC", "tC", "J", "RB", "K", "D", "E", "F", "A", "B", "C", "L", "M", "G", "N", "O", "P", "SB", "1", "2", "3", "4", "5", "6", "7", "8", "TB", "UB", "VB", "WB", "XB", "YB", "ZB", "aB", "bB", "cB", "dB", "eB", "fB", "gB", "hB", "iB", "jB", "kB", "lB", "mB", "nB", "oB", "pB", "qB", "rB", "sB", "tB", "uB", "vB", "wB", "xB", "OC", "yB", "PC", "zB", "0B", "1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "9B", "AC", "BC", "CC", "DC", "EC", "FC", "Q", "H", "R", "QC", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "9", "AB", "BB", "CB", "DB", "EB", "FB", "GB", "HB", "IB", "JB", "KB", "LB", "MB", "NB", "OB", "PB", "QB", "I", "GC", "RC", "SC", "qC", "rC"], E: "Firefox", F: { "0": 1693267200, "1": 1361232e3, "2": 1364860800, "3": 1368489600, "4": 1372118400, "5": 1375747200, "6": 1379376e3, "7": 1386633600, "8": 1391472e3, "9": 1695686400, pC: 1161648e3, NC: 1213660800, sC: 124632e4, tC: 1264032e3, J: 1300752e3, RB: 1308614400, K: 1313452800, D: 1317081600, E: 1317081600, F: 1320710400, A: 1324339200, B: 1327968e3, C: 1331596800, L: 1335225600, M: 1338854400, G: 1342483200, N: 1346112e3, O: 1349740800, P: 1353628800, SB: 1357603200, TB: 1395100800, UB: 1398729600, VB: 1402358400, WB: 1405987200, XB: 1409616e3, YB: 1413244800, ZB: 1417392e3, aB: 1421107200, bB: 1424736e3, cB: 1428278400, dB: 1431475200, eB: 1435881600, fB: 1439251200, gB: 144288e4, hB: 1446508800, iB: 1450137600, jB: 1453852800, kB: 1457395200, lB: 1461628800, mB: 1465257600, nB: 1470096e3, oB: 1474329600, pB: 1479168e3, qB: 1485216e3, rB: 1488844800, sB: 149256e4, tB: 1497312e3, uB: 1502150400, vB: 1506556800, wB: 1510617600, xB: 1516665600, OC: 1520985600, yB: 1525824e3, PC: 1529971200, zB: 1536105600, "0B": 1540252800, "1B": 1544486400, "2B": 154872e4, "3B": 1552953600, "4B": 1558396800, "5B": 1562630400, "6B": 1567468800, "7B": 1571788800, "8B": 1575331200, "9B": 1578355200, AC: 1581379200, BC: 1583798400, CC: 1586304e3, DC: 1588636800, EC: 1591056e3, FC: 1593475200, Q: 1595894400, H: 1598313600, R: 1600732800, QC: 1603152e3, S: 1605571200, T: 1607990400, U: 1611619200, V: 1614038400, W: 1616457600, X: 1618790400, Y: 1622505600, Z: 1626134400, a: 1628553600, b: 1630972800, c: 1633392e3, d: 1635811200, e: 1638835200, f: 1641859200, g: 1644364800, h: 1646697600, i: 1649116800, j: 1651536e3, k: 1653955200, l: 1656374400, m: 1658793600, n: 1661212800, o: 1663632e3, p: 1666051200, q: 1668470400, r: 1670889600, s: 1673913600, t: 1676332800, u: 1678752e3, v: 1681171200, w: 1683590400, x: 1686009600, y: 1688428800, z: 1690848e3, AB: 1698105600, BB: 1700524800, CB: 1702944e3, DB: 1705968e3, EB: 1708387200, FB: 1710806400, GB: 1713225600, HB: 1715644800, IB: 1718064e3, JB: 1720483200, KB: 1722902400, LB: 1725321600, MB: 1727740800, NB: 173016e4, OB: 1732579200, PB: 1736208e3, QB: 1738627200, I: 1741046400, GC: 1743465600, RC: 1745884800, SC: null, qC: null, rC: null } }, D: { A: { "0": 0.080168, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0.065592, J: 0, RB: 0, K: 0, D: 0, E: 0, F: 0, A: 0, B: 0, C: 0, L: 0, M: 0, G: 0, N: 0, O: 0, P: 0, SB: 0, TB: 0, UB: 0, VB: 0, WB: 0, XB: 0, YB: 0, ZB: 0, aB: 0, bB: 0, cB: 0, dB: 3644e-6, eB: 0.010932, fB: 0.010932, gB: 0.010932, hB: 0.010932, iB: 0.010932, jB: 0.010932, kB: 0.014576, lB: 0.010932, mB: 0.014576, nB: 0.021864, oB: 0.021864, pB: 0.014576, qB: 0.010932, rB: 0.014576, sB: 0.014576, tB: 0.010932, uB: 0.010932, vB: 0.021864, wB: 0.010932, xB: 0.01822, OC: 0.010932, yB: 0.010932, PC: 0, zB: 0, "0B": 0, "1B": 0, "2B": 0, "3B": 0.021864, "4B": 0, "5B": 0, "6B": 0.01822, "7B": 7288e-6, "8B": 0, "9B": 0, AC: 3644e-6, BC: 3644e-6, CC: 3644e-6, DC: 3644e-6, EC: 7288e-6, FC: 0.010932, Q: 0.069236, H: 0.010932, R: 0.021864, S: 0.029152, T: 3644e-6, U: 7288e-6, V: 0.01822, W: 0.051016, X: 0.010932, Y: 7288e-6, Z: 7288e-6, a: 0.03644, b: 0.010932, c: 0.010932, d: 0.01822, e: 7288e-6, f: 7288e-6, g: 0.01822, h: 0.032796, i: 0.01822, j: 0.01822, k: 0.01822, l: 0.010932, m: 0.069236, n: 0.032796, o: 0.010932, p: 0.021864, q: 0.025508, r: 0.043728, s: 0.903712, t: 0.01822, u: 0.03644, v: 0.029152, w: 0.116608, x: 0.051016, y: 0.025508, z: 0.160336, AB: 0.043728, BB: 0.061948, CB: 0.087456, DB: 0.07288, EB: 0.083812, FB: 0.102032, GB: 0.05466, HB: 0.10932, IB: 0.051016, JB: 0.112964, KB: 0.080168, LB: 0.131184, MB: 1.21345, NB: 0.681428, OB: 0.92922, PB: 4.30721, QB: 10.7462, I: 0.065592, GC: 0.014576, RC: 0, SC: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "J", "RB", "K", "D", "E", "F", "A", "B", "C", "L", "M", "G", "N", "O", "P", "SB", "1", "2", "3", "4", "5", "6", "7", "8", "TB", "UB", "VB", "WB", "XB", "YB", "ZB", "aB", "bB", "cB", "dB", "eB", "fB", "gB", "hB", "iB", "jB", "kB", "lB", "mB", "nB", "oB", "pB", "qB", "rB", "sB", "tB", "uB", "vB", "wB", "xB", "OC", "yB", "PC", "zB", "0B", "1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "9B", "AC", "BC", "CC", "DC", "EC", "FC", "Q", "H", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "9", "AB", "BB", "CB", "DB", "EB", "FB", "GB", "HB", "IB", "JB", "KB", "LB", "MB", "NB", "OB", "PB", "QB", "I", "GC", "RC", "SC"], E: "Chrome", F: { "0": 1694476800, "1": 133704e4, "2": 1340668800, "3": 1343692800, "4": 1348531200, "5": 1352246400, "6": 1357862400, "7": 1361404800, "8": 1364428800, "9": 1696896e3, J: 1264377600, RB: 1274745600, K: 1283385600, D: 1287619200, E: 1291248e3, F: 1296777600, A: 1299542400, B: 1303862400, C: 1307404800, L: 1312243200, M: 1316131200, G: 1316131200, N: 1319500800, O: 1323734400, P: 1328659200, SB: 1332892800, TB: 1369094400, UB: 1374105600, VB: 1376956800, WB: 1384214400, XB: 1389657600, YB: 1392940800, ZB: 1397001600, aB: 1400544e3, bB: 1405468800, cB: 1409011200, dB: 141264e4, eB: 1416268800, fB: 1421798400, gB: 1425513600, hB: 1429401600, iB: 143208e4, jB: 1437523200, kB: 1441152e3, lB: 1444780800, mB: 1449014400, nB: 1453248e3, oB: 1456963200, pB: 1460592e3, qB: 1464134400, rB: 1469059200, sB: 1472601600, tB: 1476230400, uB: 1480550400, vB: 1485302400, wB: 1489017600, xB: 149256e4, OC: 1496707200, yB: 1500940800, PC: 1504569600, zB: 1508198400, "0B": 1512518400, "1B": 1516752e3, "2B": 1520294400, "3B": 1523923200, "4B": 1527552e3, "5B": 1532390400, "6B": 1536019200, "7B": 1539648e3, "8B": 1543968e3, "9B": 154872e4, AC: 1552348800, BC: 1555977600, CC: 1559606400, DC: 1564444800, EC: 1568073600, FC: 1571702400, Q: 1575936e3, H: 1580860800, R: 1586304e3, S: 1589846400, T: 1594684800, U: 1598313600, V: 1601942400, W: 1605571200, X: 1611014400, Y: 1614556800, Z: 1618272e3, a: 1621987200, b: 1626739200, c: 1630368e3, d: 1632268800, e: 1634601600, f: 1637020800, g: 1641340800, h: 1643673600, i: 1646092800, j: 1648512e3, k: 1650931200, l: 1653350400, m: 1655769600, n: 1659398400, o: 1661817600, p: 1664236800, q: 1666656e3, r: 166968e4, s: 1673308800, t: 1675728e3, u: 1678147200, v: 1680566400, w: 1682985600, x: 1685404800, y: 1689724800, z: 1692057600, AB: 1698710400, BB: 1701993600, CB: 1705968e3, DB: 1708387200, EB: 1710806400, FB: 1713225600, GB: 1715644800, HB: 1718064e3, IB: 1721174400, JB: 1724112e3, KB: 1726531200, LB: 1728950400, MB: 1731369600, NB: 1736812800, OB: 1738627200, PB: 1741046400, QB: 1743465600, I: 1745884800, GC: null, RC: null, SC: null } }, E: { A: { J: 0, RB: 0, K: 0, D: 0, E: 0, F: 0, A: 0, B: 0, C: 0, L: 0, M: 0.014576, G: 0, uC: 0, TC: 0, vC: 0, wC: 0, xC: 0, yC: 0, UC: 0, HC: 7288e-6, IC: 7288e-6, zC: 0.032796, "0C": 0.040084, "1C": 0.014576, VC: 3644e-6, WC: 0.010932, JC: 0.010932, "2C": 0.134828, KC: 0.029152, XC: 0.021864, YC: 0.01822, ZC: 0.03644, aC: 0.014576, bC: 0.021864, "3C": 0.189488, LC: 0.010932, cC: 0.120252, dC: 0.01822, eC: 0.01822, fC: 0.043728, gC: 0.076524, "4C": 0.233216, MC: 0.032796, hC: 0.080168, iC: 0.040084, jC: 1.1515, kC: 0.335248, lC: 7288e-6, "5C": 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "uC", "TC", "J", "RB", "vC", "K", "wC", "D", "xC", "E", "F", "yC", "A", "UC", "B", "HC", "C", "IC", "L", "zC", "M", "0C", "G", "1C", "VC", "WC", "JC", "2C", "KC", "XC", "YC", "ZC", "aC", "bC", "3C", "LC", "cC", "dC", "eC", "fC", "gC", "4C", "MC", "hC", "iC", "jC", "kC", "lC", "5C", "", ""], E: "Safari", F: { uC: 1205798400, TC: 1226534400, J: 1244419200, RB: 1275868800, vC: 131112e4, K: 1343174400, wC: 13824e5, D: 13824e5, xC: 1410998400, E: 1413417600, F: 1443657600, yC: 1458518400, A: 1474329600, UC: 1490572800, B: 1505779200, HC: 1522281600, C: 1537142400, IC: 1553472e3, L: 1568851200, zC: 1585008e3, M: 1600214400, "0C": 1619395200, G: 1632096e3, "1C": 1635292800, VC: 1639353600, WC: 1647216e3, JC: 1652745600, "2C": 1658275200, KC: 1662940800, XC: 1666569600, YC: 1670889600, ZC: 1674432e3, aC: 1679875200, bC: 1684368e3, "3C": 1690156800, LC: 1695686400, cC: 1698192e3, dC: 1702252800, eC: 1705881600, fC: 1709596800, gC: 1715558400, "4C": 1722211200, MC: 1726444800, hC: 1730073600, iC: 1733875200, jC: 1737936e3, kC: 1743379200, lC: 1747008e3, "5C": null } }, F: { A: { "0": 0.750664, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, F: 0, B: 0, C: 0, G: 0, N: 0, O: 0, P: 0, SB: 0, TB: 0, UB: 0, VB: 0, WB: 0, XB: 0, YB: 0, ZB: 0, aB: 0, bB: 0, cB: 0, dB: 0, eB: 0, fB: 7288e-6, gB: 0, hB: 0, iB: 0, jB: 0, kB: 0, lB: 0.010932, mB: 0, nB: 0, oB: 0, pB: 0, qB: 0, rB: 0, sB: 0, tB: 0, uB: 0, vB: 0, wB: 0, xB: 0, yB: 0, zB: 0, "0B": 0, "1B": 0, "2B": 0, "3B": 0, "4B": 0, "5B": 0, "6B": 0, "7B": 0, "8B": 0, "9B": 0, AC: 0, BC: 0, CC: 0, DC: 0, EC: 0, FC: 0, Q: 0, H: 0, R: 0, QC: 0, S: 0, T: 0, U: 0, V: 0, W: 0, X: 0.032796, Y: 0, Z: 0, a: 0, b: 0, c: 0, d: 0, e: 0.032796, f: 0, g: 0, h: 0, i: 0, j: 0, k: 0, l: 0.076524, m: 0, n: 0, o: 0, p: 0, q: 0, r: 0, s: 0, t: 0, u: 0, v: 0, w: 0, x: 0, y: 0, z: 3644e-6, "6C": 0, "7C": 0, "8C": 0, "9C": 0, HC: 0, mC: 0, AD: 0, IC: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "F", "6C", "7C", "8C", "9C", "B", "HC", "mC", "AD", "C", "IC", "G", "N", "O", "P", "SB", "1", "2", "3", "4", "5", "6", "7", "8", "TB", "UB", "VB", "WB", "XB", "YB", "ZB", "aB", "bB", "cB", "dB", "eB", "fB", "gB", "hB", "iB", "jB", "kB", "lB", "mB", "nB", "oB", "pB", "qB", "rB", "sB", "tB", "uB", "vB", "wB", "xB", "yB", "zB", "0B", "1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "9B", "AC", "BC", "CC", "DC", "EC", "FC", "Q", "H", "R", "QC", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "", "", ""], E: "Opera", F: { "0": 1739404800, "1": 1393891200, "2": 1399334400, "3": 1401753600, "4": 1405987200, "5": 1409616e3, "6": 1413331200, "7": 1417132800, "8": 1422316800, F: 1150761600, "6C": 1223424e3, "7C": 1251763200, "8C": 1267488e3, "9C": 1277942400, B: 1292457600, HC: 1302566400, mC: 1309219200, AD: 1323129600, C: 1323129600, IC: 1352073600, G: 1372723200, N: 1377561600, O: 1381104e3, P: 1386288e3, SB: 1390867200, TB: 1425945600, UB: 1430179200, VB: 1433808e3, WB: 1438646400, XB: 1442448e3, YB: 1445904e3, ZB: 1449100800, aB: 1454371200, bB: 1457308800, cB: 146232e4, dB: 1465344e3, eB: 1470096e3, fB: 1474329600, gB: 1477267200, hB: 1481587200, iB: 1486425600, jB: 1490054400, kB: 1494374400, lB: 1498003200, mB: 1502236800, nB: 1506470400, oB: 1510099200, pB: 1515024e3, qB: 1517961600, rB: 1521676800, sB: 1525910400, tB: 1530144e3, uB: 1534982400, vB: 1537833600, wB: 1543363200, xB: 1548201600, yB: 1554768e3, zB: 1561593600, "0B": 1566259200, "1B": 1570406400, "2B": 1573689600, "3B": 1578441600, "4B": 1583971200, "5B": 1587513600, "6B": 1592956800, "7B": 1595894400, "8B": 1600128e3, "9B": 1603238400, AC: 161352e4, BC: 1612224e3, CC: 1616544e3, DC: 1619568e3, EC: 1623715200, FC: 1627948800, Q: 1631577600, H: 1633392e3, R: 1635984e3, QC: 1638403200, S: 1642550400, T: 1644969600, U: 1647993600, V: 1650412800, W: 1652745600, X: 1654646400, Y: 1657152e3, Z: 1660780800, a: 1663113600, b: 1668816e3, c: 1668643200, d: 1671062400, e: 1675209600, f: 1677024e3, g: 1679529600, h: 1681948800, i: 1684195200, j: 1687219200, k: 1690329600, l: 1692748800, m: 1696204800, n: 169992e4, o: 169992e4, p: 1702944e3, q: 1707264e3, r: 1710115200, s: 1711497600, t: 1716336e3, u: 1719273600, v: 1721088e3, w: 1724284800, x: 1727222400, y: 1732665600, z: 1736294400 }, D: { F: "o", B: "o", C: "o", "6C": "o", "7C": "o", "8C": "o", "9C": "o", HC: "o", mC: "o", AD: "o", IC: "o" } }, G: { A: { E: 0, TC: 0, BD: 0, nC: 284323e-8, CD: 0, DD: 568645e-8, ED: 568645e-8, FD: 0, GD: 284323e-8, HD: 0.018481, ID: 142161e-8, JD: 0.0298539, KD: 0.243096, LD: 0.0113729, MD: 284323e-8, ND: 0.112307, OD: 142161e-8, PD: 568645e-8, QD: 426484e-8, RD: 0.0199026, SD: 0.130788, TD: 0.0469132, UD: 0.0298539, VC: 0.0298539, WC: 0.036962, JC: 0.0398052, VD: 0.490457, KC: 0.0682374, XC: 0.145005, YC: 0.0753455, ZC: 0.129367, aC: 0.0298539, bC: 0.0540213, WD: 0.604186, LC: 0.0341187, cC: 0.0611294, dC: 0.0483349, eC: 0.0696591, fC: 0.13221, gC: 0.288588, XD: 0.813163, MC: 0.217507, hC: 0.587126, iC: 0.285744, jC: 7.46205, kC: 1.76564, lC: 0.0611294 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "TC", "BD", "nC", "CD", "DD", "ED", "E", "FD", "GD", "HD", "ID", "JD", "KD", "LD", "MD", "ND", "OD", "PD", "QD", "RD", "SD", "TD", "UD", "VC", "WC", "JC", "VD", "KC", "XC", "YC", "ZC", "aC", "bC", "WD", "LC", "cC", "dC", "eC", "fC", "gC", "XD", "MC", "hC", "iC", "jC", "kC", "lC", "", "", ""], E: "Safari on iOS", F: { TC: 1270252800, BD: 1283904e3, nC: 1299628800, CD: 1331078400, DD: 1359331200, ED: 1394409600, E: 1410912e3, FD: 1413763200, GD: 1442361600, HD: 1458518400, ID: 1473724800, JD: 1490572800, KD: 1505779200, LD: 1522281600, MD: 1537142400, ND: 1553472e3, OD: 1568851200, PD: 1572220800, QD: 1580169600, RD: 1585008e3, SD: 1600214400, TD: 1619395200, UD: 1632096e3, VC: 1639353600, WC: 1647216e3, JC: 1652659200, VD: 1658275200, KC: 1662940800, XC: 1666569600, YC: 1670889600, ZC: 1674432e3, aC: 1679875200, bC: 1684368e3, WD: 1690156800, LC: 1694995200, cC: 1698192e3, dC: 1702252800, eC: 1705881600, fC: 1709596800, gC: 1715558400, XD: 1722211200, MC: 1726444800, hC: 1730073600, iC: 1733875200, jC: 1737936e3, kC: 1743379200, lC: 1747008e3 } }, H: { A: { YD: 0.05 }, B: "o", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "YD", "", "", ""], E: "Opera Mini", F: { YD: 1426464e3 } }, I: { A: { NC: 0, J: 0, I: 0.818237, ZD: 0, aD: 0, bD: 0, cD: 0, nC: 163959e-9, dD: 0, eD: 819795e-9 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "ZD", "aD", "bD", "NC", "J", "cD", "nC", "dD", "eD", "I", "", "", ""], E: "Android Browser", F: { ZD: 1256515200, aD: 1274313600, bD: 1291593600, NC: 1298332800, J: 1318896e3, cD: 1341792e3, nC: 1374624e3, dD: 1386547200, eD: 1401667200, I: 1745971200 } }, J: { A: { D: 0, A: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "D", "A", "", "", ""], E: "Blackberry Browser", F: { D: 1325376e3, A: 1359504e3 } }, K: { A: { A: 0, B: 0, C: 0, H: 0.922315, HC: 0, mC: 0, IC: 0 }, B: "o", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "A", "B", "HC", "mC", "C", "IC", "H", "", "", ""], E: "Opera Mobile", F: { A: 1287100800, B: 1300752e3, HC: 1314835200, mC: 1318291200, C: 1330300800, IC: 1349740800, H: 1709769600 }, D: { H: "webkit" } }, L: { A: { I: 44.9483 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "I", "", "", ""], E: "Chrome for Android", F: { I: 1745971200 } }, M: { A: { GC: 0.336815 }, B: "moz", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "GC", "", "", ""], E: "Firefox for Android", F: { GC: 1743465600 } }, N: { A: { A: 0, B: 0 }, B: "ms", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "A", "B", "", "", ""], E: "IE Mobile", F: { A: 1340150400, B: 1353456e3 } }, O: { A: { JC: 0.86428 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "JC", "", "", ""], E: "UC Browser for Android", F: { JC: 1710115200 }, D: { JC: "webkit" } }, P: { A: { "1": 0, "2": 0.0220266, "3": 0.0220266, "4": 0.0330398, "5": 0.0440531, "6": 0.0440531, "7": 0.0770929, "8": 1.68503, J: 0.0110133, fD: 0, gD: 0, hD: 0.0110133, iD: 0, jD: 0, UC: 0, kD: 0, lD: 0, mD: 0, nD: 0, oD: 0, KC: 0, LC: 0.0110133, MC: 0, pD: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "J", "fD", "gD", "hD", "iD", "jD", "UC", "kD", "lD", "mD", "nD", "oD", "KC", "LC", "MC", "pD", "1", "2", "3", "4", "5", "6", "7", "8", "", "", ""], E: "Samsung Internet", F: { "1": 1677369600, "2": 1684454400, "3": 1689292800, "4": 1697587200, "5": 1711497600, "6": 1715126400, "7": 1717718400, "8": 1725667200, J: 1461024e3, fD: 1481846400, gD: 1509408e3, hD: 1528329600, iD: 1546128e3, jD: 1554163200, UC: 1567900800, kD: 1582588800, lD: 1593475200, mD: 1605657600, nD: 1618531200, oD: 1629072e3, KC: 1640736e3, LC: 1651708800, MC: 1659657600, pD: 1667260800 } }, Q: { A: { qD: 0.222425 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "qD", "", "", ""], E: "QQ Browser", F: { qD: 1710288e3 } }, R: { A: { rD: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "rD", "", "", ""], E: "Baidu Browser", F: { rD: 1710201600 } }, S: { A: { sD: 0.01271, tD: 0 }, B: "moz", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "sD", "tD", "", "", ""], E: "KaiOS Browser", F: { sD: 1527811200, tD: 1631664e3 } } };
+  "node_modules/caniuse-lite/data/agents.js"(exports2, module2) {
+    module2.exports = { A: { A: { K: 0, D: 0, E: 0.030974, F: 0.030974, A: 0, B: 0.433636, oC: 0 }, B: "ms", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "oC", "K", "D", "E", "F", "A", "B", "", "", ""], E: "IE", F: { oC: 962323200, K: 998870400, D: 1161129600, E: 1237420800, F: 1300060800, A: 1346716800, B: 1381968e3 } }, B: { A: { "0": 3644e-6, "9": 3644e-6, C: 0, L: 0, M: 0, G: 0, N: 0, O: 0, P: 0.10932, Q: 0, H: 0, R: 0, S: 0, T: 0, U: 0, V: 0, W: 0, X: 0, Y: 0, Z: 0, a: 0, b: 0.014576, c: 0, d: 0, e: 0, f: 0, g: 0, h: 0, i: 0, j: 0, k: 0, l: 0, m: 0, n: 0, o: 0, p: 0, q: 3644e-6, r: 7288e-6, s: 0.047372, t: 3644e-6, u: 3644e-6, v: 3644e-6, w: 7288e-6, x: 0.010932, y: 3644e-6, z: 3644e-6, AB: 3644e-6, BB: 0.03644, CB: 7288e-6, DB: 0.010932, EB: 3644e-6, FB: 7288e-6, GB: 7288e-6, HB: 0.01822, IB: 0.014576, JB: 0.010932, KB: 0.010932, LB: 0.01822, MB: 0.047372, NB: 0.043728, OB: 0.058304, PB: 0.972948, QB: 3.39621, I: 7288e-6 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "C", "L", "M", "G", "N", "O", "P", "Q", "H", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "9", "AB", "BB", "CB", "DB", "EB", "FB", "GB", "HB", "IB", "JB", "KB", "LB", "MB", "NB", "OB", "PB", "QB", "I", "", "", ""], E: "Edge", F: { "0": 1694649600, "9": 1697155200, C: 1438128e3, L: 1447286400, M: 1470096e3, G: 1491868800, N: 1508198400, O: 1525046400, P: 1542067200, Q: 1579046400, H: 1581033600, R: 1586736e3, S: 1590019200, T: 1594857600, U: 1598486400, V: 1602201600, W: 1605830400, X: 161136e4, Y: 1614816e3, Z: 1618358400, a: 1622073600, b: 1626912e3, c: 1630627200, d: 1632441600, e: 1634774400, f: 1637539200, g: 1641427200, h: 1643932800, i: 1646265600, j: 1649635200, k: 1651190400, l: 1653955200, m: 1655942400, n: 1659657600, o: 1661990400, p: 1664755200, q: 1666915200, r: 1670198400, s: 1673481600, t: 1675900800, u: 1678665600, v: 1680825600, w: 1683158400, x: 1685664e3, y: 1689897600, z: 1692576e3, AB: 1698969600, BB: 1701993600, CB: 1706227200, DB: 1708732800, EB: 1711152e3, FB: 1713398400, GB: 1715990400, HB: 1718841600, IB: 1721865600, JB: 1724371200, KB: 1726704e3, LB: 1729123200, MB: 1731542400, NB: 1737417600, OB: 1740614400, PB: 1741219200, QB: 1743984e3, I: 1746316800 }, D: { C: "ms", L: "ms", M: "ms", G: "ms", N: "ms", O: "ms", P: "ms" } }, C: { A: { "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0.10932, pC: 3644e-6, NC: 0, J: 3644e-6, RB: 0, K: 0, D: 0, E: 0, F: 0, A: 0, B: 0.029152, C: 0, L: 0, M: 0, G: 0, N: 0, O: 0, P: 0, SB: 0, TB: 0, UB: 0, VB: 0, WB: 0, XB: 0, YB: 0, ZB: 0, aB: 0, bB: 0, cB: 0, dB: 0, eB: 0, fB: 0, gB: 0, hB: 0, iB: 0, jB: 0, kB: 3644e-6, lB: 0, mB: 0, nB: 0, oB: 0, pB: 0, qB: 0, rB: 0.029152, sB: 7288e-6, tB: 0, uB: 0, vB: 0, wB: 0, xB: 0, OC: 7288e-6, yB: 0, PC: 0, zB: 0, "0B": 0, "1B": 0, "2B": 0, "3B": 0, "4B": 0, "5B": 0, "6B": 0, "7B": 0, "8B": 0, "9B": 0.040084, AC: 0, BC: 0, CC: 0, DC: 0, EC: 0, FC: 0.010932, Q: 0, H: 0, R: 0, QC: 0, S: 0, T: 0, U: 0, V: 0, W: 0, X: 0, Y: 0, Z: 0, a: 0, b: 0, c: 0, d: 7288e-6, e: 0, f: 0, g: 0, h: 0, i: 0, j: 0, k: 0, l: 0, m: 0, n: 0, o: 0, p: 0, q: 0, r: 0, s: 3644e-6, t: 0, u: 0, v: 0, w: 0, x: 0, y: 0.2733, z: 0, AB: 0, BB: 3644e-6, CB: 0, DB: 0, EB: 0, FB: 0, GB: 0.014576, HB: 0, IB: 3644e-6, JB: 0.0911, KB: 0, LB: 0, MB: 3644e-6, NB: 7288e-6, OB: 0.010932, PB: 0.010932, QB: 0.025508, I: 0.207708, GC: 1.19888, RC: 0.021864, SC: 0, qC: 0, rC: 0, sC: 0, tC: 0 }, B: "moz", C: ["pC", "NC", "sC", "tC", "J", "RB", "K", "D", "E", "F", "A", "B", "C", "L", "M", "G", "N", "O", "P", "SB", "1", "2", "3", "4", "5", "6", "7", "8", "TB", "UB", "VB", "WB", "XB", "YB", "ZB", "aB", "bB", "cB", "dB", "eB", "fB", "gB", "hB", "iB", "jB", "kB", "lB", "mB", "nB", "oB", "pB", "qB", "rB", "sB", "tB", "uB", "vB", "wB", "xB", "OC", "yB", "PC", "zB", "0B", "1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "9B", "AC", "BC", "CC", "DC", "EC", "FC", "Q", "H", "R", "QC", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "9", "AB", "BB", "CB", "DB", "EB", "FB", "GB", "HB", "IB", "JB", "KB", "LB", "MB", "NB", "OB", "PB", "QB", "I", "GC", "RC", "SC", "qC", "rC"], E: "Firefox", F: { "0": 1693267200, "1": 1361232e3, "2": 1364860800, "3": 1368489600, "4": 1372118400, "5": 1375747200, "6": 1379376e3, "7": 1386633600, "8": 1391472e3, "9": 1695686400, pC: 1161648e3, NC: 1213660800, sC: 124632e4, tC: 1264032e3, J: 1300752e3, RB: 1308614400, K: 1313452800, D: 1317081600, E: 1317081600, F: 1320710400, A: 1324339200, B: 1327968e3, C: 1331596800, L: 1335225600, M: 1338854400, G: 1342483200, N: 1346112e3, O: 1349740800, P: 1353628800, SB: 1357603200, TB: 1395100800, UB: 1398729600, VB: 1402358400, WB: 1405987200, XB: 1409616e3, YB: 1413244800, ZB: 1417392e3, aB: 1421107200, bB: 1424736e3, cB: 1428278400, dB: 1431475200, eB: 1435881600, fB: 1439251200, gB: 144288e4, hB: 1446508800, iB: 1450137600, jB: 1453852800, kB: 1457395200, lB: 1461628800, mB: 1465257600, nB: 1470096e3, oB: 1474329600, pB: 1479168e3, qB: 1485216e3, rB: 1488844800, sB: 149256e4, tB: 1497312e3, uB: 1502150400, vB: 1506556800, wB: 1510617600, xB: 1516665600, OC: 1520985600, yB: 1525824e3, PC: 1529971200, zB: 1536105600, "0B": 1540252800, "1B": 1544486400, "2B": 154872e4, "3B": 1552953600, "4B": 1558396800, "5B": 1562630400, "6B": 1567468800, "7B": 1571788800, "8B": 1575331200, "9B": 1578355200, AC: 1581379200, BC: 1583798400, CC: 1586304e3, DC: 1588636800, EC: 1591056e3, FC: 1593475200, Q: 1595894400, H: 1598313600, R: 1600732800, QC: 1603152e3, S: 1605571200, T: 1607990400, U: 1611619200, V: 1614038400, W: 1616457600, X: 1618790400, Y: 1622505600, Z: 1626134400, a: 1628553600, b: 1630972800, c: 1633392e3, d: 1635811200, e: 1638835200, f: 1641859200, g: 1644364800, h: 1646697600, i: 1649116800, j: 1651536e3, k: 1653955200, l: 1656374400, m: 1658793600, n: 1661212800, o: 1663632e3, p: 1666051200, q: 1668470400, r: 1670889600, s: 1673913600, t: 1676332800, u: 1678752e3, v: 1681171200, w: 1683590400, x: 1686009600, y: 1688428800, z: 1690848e3, AB: 1698105600, BB: 1700524800, CB: 1702944e3, DB: 1705968e3, EB: 1708387200, FB: 1710806400, GB: 1713225600, HB: 1715644800, IB: 1718064e3, JB: 1720483200, KB: 1722902400, LB: 1725321600, MB: 1727740800, NB: 173016e4, OB: 1732579200, PB: 1736208e3, QB: 1738627200, I: 1741046400, GC: 1743465600, RC: 1745884800, SC: null, qC: null, rC: null } }, D: { A: { "0": 0.080168, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0.065592, J: 0, RB: 0, K: 0, D: 0, E: 0, F: 0, A: 0, B: 0, C: 0, L: 0, M: 0, G: 0, N: 0, O: 0, P: 0, SB: 0, TB: 0, UB: 0, VB: 0, WB: 0, XB: 0, YB: 0, ZB: 0, aB: 0, bB: 0, cB: 0, dB: 3644e-6, eB: 0.010932, fB: 0.010932, gB: 0.010932, hB: 0.010932, iB: 0.010932, jB: 0.010932, kB: 0.014576, lB: 0.010932, mB: 0.014576, nB: 0.021864, oB: 0.021864, pB: 0.014576, qB: 0.010932, rB: 0.014576, sB: 0.014576, tB: 0.010932, uB: 0.010932, vB: 0.021864, wB: 0.010932, xB: 0.01822, OC: 0.010932, yB: 0.010932, PC: 0, zB: 0, "0B": 0, "1B": 0, "2B": 0, "3B": 0.021864, "4B": 0, "5B": 0, "6B": 0.01822, "7B": 7288e-6, "8B": 0, "9B": 0, AC: 3644e-6, BC: 3644e-6, CC: 3644e-6, DC: 3644e-6, EC: 7288e-6, FC: 0.010932, Q: 0.069236, H: 0.010932, R: 0.021864, S: 0.029152, T: 3644e-6, U: 7288e-6, V: 0.01822, W: 0.051016, X: 0.010932, Y: 7288e-6, Z: 7288e-6, a: 0.03644, b: 0.010932, c: 0.010932, d: 0.01822, e: 7288e-6, f: 7288e-6, g: 0.01822, h: 0.032796, i: 0.01822, j: 0.01822, k: 0.01822, l: 0.010932, m: 0.069236, n: 0.032796, o: 0.010932, p: 0.021864, q: 0.025508, r: 0.043728, s: 0.903712, t: 0.01822, u: 0.03644, v: 0.029152, w: 0.116608, x: 0.051016, y: 0.025508, z: 0.160336, AB: 0.043728, BB: 0.061948, CB: 0.087456, DB: 0.07288, EB: 0.083812, FB: 0.102032, GB: 0.05466, HB: 0.10932, IB: 0.051016, JB: 0.112964, KB: 0.080168, LB: 0.131184, MB: 1.21345, NB: 0.681428, OB: 0.92922, PB: 4.30721, QB: 10.7462, I: 0.065592, GC: 0.014576, RC: 0, SC: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "J", "RB", "K", "D", "E", "F", "A", "B", "C", "L", "M", "G", "N", "O", "P", "SB", "1", "2", "3", "4", "5", "6", "7", "8", "TB", "UB", "VB", "WB", "XB", "YB", "ZB", "aB", "bB", "cB", "dB", "eB", "fB", "gB", "hB", "iB", "jB", "kB", "lB", "mB", "nB", "oB", "pB", "qB", "rB", "sB", "tB", "uB", "vB", "wB", "xB", "OC", "yB", "PC", "zB", "0B", "1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "9B", "AC", "BC", "CC", "DC", "EC", "FC", "Q", "H", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "9", "AB", "BB", "CB", "DB", "EB", "FB", "GB", "HB", "IB", "JB", "KB", "LB", "MB", "NB", "OB", "PB", "QB", "I", "GC", "RC", "SC"], E: "Chrome", F: { "0": 1694476800, "1": 133704e4, "2": 1340668800, "3": 1343692800, "4": 1348531200, "5": 1352246400, "6": 1357862400, "7": 1361404800, "8": 1364428800, "9": 1696896e3, J: 1264377600, RB: 1274745600, K: 1283385600, D: 1287619200, E: 1291248e3, F: 1296777600, A: 1299542400, B: 1303862400, C: 1307404800, L: 1312243200, M: 1316131200, G: 1316131200, N: 1319500800, O: 1323734400, P: 1328659200, SB: 1332892800, TB: 1369094400, UB: 1374105600, VB: 1376956800, WB: 1384214400, XB: 1389657600, YB: 1392940800, ZB: 1397001600, aB: 1400544e3, bB: 1405468800, cB: 1409011200, dB: 141264e4, eB: 1416268800, fB: 1421798400, gB: 1425513600, hB: 1429401600, iB: 143208e4, jB: 1437523200, kB: 1441152e3, lB: 1444780800, mB: 1449014400, nB: 1453248e3, oB: 1456963200, pB: 1460592e3, qB: 1464134400, rB: 1469059200, sB: 1472601600, tB: 1476230400, uB: 1480550400, vB: 1485302400, wB: 1489017600, xB: 149256e4, OC: 1496707200, yB: 1500940800, PC: 1504569600, zB: 1508198400, "0B": 1512518400, "1B": 1516752e3, "2B": 1520294400, "3B": 1523923200, "4B": 1527552e3, "5B": 1532390400, "6B": 1536019200, "7B": 1539648e3, "8B": 1543968e3, "9B": 154872e4, AC: 1552348800, BC: 1555977600, CC: 1559606400, DC: 1564444800, EC: 1568073600, FC: 1571702400, Q: 1575936e3, H: 1580860800, R: 1586304e3, S: 1589846400, T: 1594684800, U: 1598313600, V: 1601942400, W: 1605571200, X: 1611014400, Y: 1614556800, Z: 1618272e3, a: 1621987200, b: 1626739200, c: 1630368e3, d: 1632268800, e: 1634601600, f: 1637020800, g: 1641340800, h: 1643673600, i: 1646092800, j: 1648512e3, k: 1650931200, l: 1653350400, m: 1655769600, n: 1659398400, o: 1661817600, p: 1664236800, q: 1666656e3, r: 166968e4, s: 1673308800, t: 1675728e3, u: 1678147200, v: 1680566400, w: 1682985600, x: 1685404800, y: 1689724800, z: 1692057600, AB: 1698710400, BB: 1701993600, CB: 1705968e3, DB: 1708387200, EB: 1710806400, FB: 1713225600, GB: 1715644800, HB: 1718064e3, IB: 1721174400, JB: 1724112e3, KB: 1726531200, LB: 1728950400, MB: 1731369600, NB: 1736812800, OB: 1738627200, PB: 1741046400, QB: 1743465600, I: 1745884800, GC: null, RC: null, SC: null } }, E: { A: { J: 0, RB: 0, K: 0, D: 0, E: 0, F: 0, A: 0, B: 0, C: 0, L: 0, M: 0.014576, G: 0, uC: 0, TC: 0, vC: 0, wC: 0, xC: 0, yC: 0, UC: 0, HC: 7288e-6, IC: 7288e-6, zC: 0.032796, "0C": 0.040084, "1C": 0.014576, VC: 3644e-6, WC: 0.010932, JC: 0.010932, "2C": 0.134828, KC: 0.029152, XC: 0.021864, YC: 0.01822, ZC: 0.03644, aC: 0.014576, bC: 0.021864, "3C": 0.189488, LC: 0.010932, cC: 0.120252, dC: 0.01822, eC: 0.01822, fC: 0.043728, gC: 0.076524, "4C": 0.233216, MC: 0.032796, hC: 0.080168, iC: 0.040084, jC: 1.1515, kC: 0.335248, lC: 7288e-6, "5C": 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "uC", "TC", "J", "RB", "vC", "K", "wC", "D", "xC", "E", "F", "yC", "A", "UC", "B", "HC", "C", "IC", "L", "zC", "M", "0C", "G", "1C", "VC", "WC", "JC", "2C", "KC", "XC", "YC", "ZC", "aC", "bC", "3C", "LC", "cC", "dC", "eC", "fC", "gC", "4C", "MC", "hC", "iC", "jC", "kC", "lC", "5C", "", ""], E: "Safari", F: { uC: 1205798400, TC: 1226534400, J: 1244419200, RB: 1275868800, vC: 131112e4, K: 1343174400, wC: 13824e5, D: 13824e5, xC: 1410998400, E: 1413417600, F: 1443657600, yC: 1458518400, A: 1474329600, UC: 1490572800, B: 1505779200, HC: 1522281600, C: 1537142400, IC: 1553472e3, L: 1568851200, zC: 1585008e3, M: 1600214400, "0C": 1619395200, G: 1632096e3, "1C": 1635292800, VC: 1639353600, WC: 1647216e3, JC: 1652745600, "2C": 1658275200, KC: 1662940800, XC: 1666569600, YC: 1670889600, ZC: 1674432e3, aC: 1679875200, bC: 1684368e3, "3C": 1690156800, LC: 1695686400, cC: 1698192e3, dC: 1702252800, eC: 1705881600, fC: 1709596800, gC: 1715558400, "4C": 1722211200, MC: 1726444800, hC: 1730073600, iC: 1733875200, jC: 1737936e3, kC: 1743379200, lC: 1747008e3, "5C": null } }, F: { A: { "0": 0.750664, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, F: 0, B: 0, C: 0, G: 0, N: 0, O: 0, P: 0, SB: 0, TB: 0, UB: 0, VB: 0, WB: 0, XB: 0, YB: 0, ZB: 0, aB: 0, bB: 0, cB: 0, dB: 0, eB: 0, fB: 7288e-6, gB: 0, hB: 0, iB: 0, jB: 0, kB: 0, lB: 0.010932, mB: 0, nB: 0, oB: 0, pB: 0, qB: 0, rB: 0, sB: 0, tB: 0, uB: 0, vB: 0, wB: 0, xB: 0, yB: 0, zB: 0, "0B": 0, "1B": 0, "2B": 0, "3B": 0, "4B": 0, "5B": 0, "6B": 0, "7B": 0, "8B": 0, "9B": 0, AC: 0, BC: 0, CC: 0, DC: 0, EC: 0, FC: 0, Q: 0, H: 0, R: 0, QC: 0, S: 0, T: 0, U: 0, V: 0, W: 0, X: 0.032796, Y: 0, Z: 0, a: 0, b: 0, c: 0, d: 0, e: 0.032796, f: 0, g: 0, h: 0, i: 0, j: 0, k: 0, l: 0.076524, m: 0, n: 0, o: 0, p: 0, q: 0, r: 0, s: 0, t: 0, u: 0, v: 0, w: 0, x: 0, y: 0, z: 3644e-6, "6C": 0, "7C": 0, "8C": 0, "9C": 0, HC: 0, mC: 0, AD: 0, IC: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "F", "6C", "7C", "8C", "9C", "B", "HC", "mC", "AD", "C", "IC", "G", "N", "O", "P", "SB", "1", "2", "3", "4", "5", "6", "7", "8", "TB", "UB", "VB", "WB", "XB", "YB", "ZB", "aB", "bB", "cB", "dB", "eB", "fB", "gB", "hB", "iB", "jB", "kB", "lB", "mB", "nB", "oB", "pB", "qB", "rB", "sB", "tB", "uB", "vB", "wB", "xB", "yB", "zB", "0B", "1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "9B", "AC", "BC", "CC", "DC", "EC", "FC", "Q", "H", "R", "QC", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "", "", ""], E: "Opera", F: { "0": 1739404800, "1": 1393891200, "2": 1399334400, "3": 1401753600, "4": 1405987200, "5": 1409616e3, "6": 1413331200, "7": 1417132800, "8": 1422316800, F: 1150761600, "6C": 1223424e3, "7C": 1251763200, "8C": 1267488e3, "9C": 1277942400, B: 1292457600, HC: 1302566400, mC: 1309219200, AD: 1323129600, C: 1323129600, IC: 1352073600, G: 1372723200, N: 1377561600, O: 1381104e3, P: 1386288e3, SB: 1390867200, TB: 1425945600, UB: 1430179200, VB: 1433808e3, WB: 1438646400, XB: 1442448e3, YB: 1445904e3, ZB: 1449100800, aB: 1454371200, bB: 1457308800, cB: 146232e4, dB: 1465344e3, eB: 1470096e3, fB: 1474329600, gB: 1477267200, hB: 1481587200, iB: 1486425600, jB: 1490054400, kB: 1494374400, lB: 1498003200, mB: 1502236800, nB: 1506470400, oB: 1510099200, pB: 1515024e3, qB: 1517961600, rB: 1521676800, sB: 1525910400, tB: 1530144e3, uB: 1534982400, vB: 1537833600, wB: 1543363200, xB: 1548201600, yB: 1554768e3, zB: 1561593600, "0B": 1566259200, "1B": 1570406400, "2B": 1573689600, "3B": 1578441600, "4B": 1583971200, "5B": 1587513600, "6B": 1592956800, "7B": 1595894400, "8B": 1600128e3, "9B": 1603238400, AC: 161352e4, BC: 1612224e3, CC: 1616544e3, DC: 1619568e3, EC: 1623715200, FC: 1627948800, Q: 1631577600, H: 1633392e3, R: 1635984e3, QC: 1638403200, S: 1642550400, T: 1644969600, U: 1647993600, V: 1650412800, W: 1652745600, X: 1654646400, Y: 1657152e3, Z: 1660780800, a: 1663113600, b: 1668816e3, c: 1668643200, d: 1671062400, e: 1675209600, f: 1677024e3, g: 1679529600, h: 1681948800, i: 1684195200, j: 1687219200, k: 1690329600, l: 1692748800, m: 1696204800, n: 169992e4, o: 169992e4, p: 1702944e3, q: 1707264e3, r: 1710115200, s: 1711497600, t: 1716336e3, u: 1719273600, v: 1721088e3, w: 1724284800, x: 1727222400, y: 1732665600, z: 1736294400 }, D: { F: "o", B: "o", C: "o", "6C": "o", "7C": "o", "8C": "o", "9C": "o", HC: "o", mC: "o", AD: "o", IC: "o" } }, G: { A: { E: 0, TC: 0, BD: 0, nC: 284323e-8, CD: 0, DD: 568645e-8, ED: 568645e-8, FD: 0, GD: 284323e-8, HD: 0.018481, ID: 142161e-8, JD: 0.0298539, KD: 0.243096, LD: 0.0113729, MD: 284323e-8, ND: 0.112307, OD: 142161e-8, PD: 568645e-8, QD: 426484e-8, RD: 0.0199026, SD: 0.130788, TD: 0.0469132, UD: 0.0298539, VC: 0.0298539, WC: 0.036962, JC: 0.0398052, VD: 0.490457, KC: 0.0682374, XC: 0.145005, YC: 0.0753455, ZC: 0.129367, aC: 0.0298539, bC: 0.0540213, WD: 0.604186, LC: 0.0341187, cC: 0.0611294, dC: 0.0483349, eC: 0.0696591, fC: 0.13221, gC: 0.288588, XD: 0.813163, MC: 0.217507, hC: 0.587126, iC: 0.285744, jC: 7.46205, kC: 1.76564, lC: 0.0611294 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "TC", "BD", "nC", "CD", "DD", "ED", "E", "FD", "GD", "HD", "ID", "JD", "KD", "LD", "MD", "ND", "OD", "PD", "QD", "RD", "SD", "TD", "UD", "VC", "WC", "JC", "VD", "KC", "XC", "YC", "ZC", "aC", "bC", "WD", "LC", "cC", "dC", "eC", "fC", "gC", "XD", "MC", "hC", "iC", "jC", "kC", "lC", "", "", ""], E: "Safari on iOS", F: { TC: 1270252800, BD: 1283904e3, nC: 1299628800, CD: 1331078400, DD: 1359331200, ED: 1394409600, E: 1410912e3, FD: 1413763200, GD: 1442361600, HD: 1458518400, ID: 1473724800, JD: 1490572800, KD: 1505779200, LD: 1522281600, MD: 1537142400, ND: 1553472e3, OD: 1568851200, PD: 1572220800, QD: 1580169600, RD: 1585008e3, SD: 1600214400, TD: 1619395200, UD: 1632096e3, VC: 1639353600, WC: 1647216e3, JC: 1652659200, VD: 1658275200, KC: 1662940800, XC: 1666569600, YC: 1670889600, ZC: 1674432e3, aC: 1679875200, bC: 1684368e3, WD: 1690156800, LC: 1694995200, cC: 1698192e3, dC: 1702252800, eC: 1705881600, fC: 1709596800, gC: 1715558400, XD: 1722211200, MC: 1726444800, hC: 1730073600, iC: 1733875200, jC: 1737936e3, kC: 1743379200, lC: 1747008e3 } }, H: { A: { YD: 0.05 }, B: "o", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "YD", "", "", ""], E: "Opera Mini", F: { YD: 1426464e3 } }, I: { A: { NC: 0, J: 0, I: 0.818237, ZD: 0, aD: 0, bD: 0, cD: 0, nC: 163959e-9, dD: 0, eD: 819795e-9 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "ZD", "aD", "bD", "NC", "J", "cD", "nC", "dD", "eD", "I", "", "", ""], E: "Android Browser", F: { ZD: 1256515200, aD: 1274313600, bD: 1291593600, NC: 1298332800, J: 1318896e3, cD: 1341792e3, nC: 1374624e3, dD: 1386547200, eD: 1401667200, I: 1745971200 } }, J: { A: { D: 0, A: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "D", "A", "", "", ""], E: "Blackberry Browser", F: { D: 1325376e3, A: 1359504e3 } }, K: { A: { A: 0, B: 0, C: 0, H: 0.922315, HC: 0, mC: 0, IC: 0 }, B: "o", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "A", "B", "HC", "mC", "C", "IC", "H", "", "", ""], E: "Opera Mobile", F: { A: 1287100800, B: 1300752e3, HC: 1314835200, mC: 1318291200, C: 1330300800, IC: 1349740800, H: 1709769600 }, D: { H: "webkit" } }, L: { A: { I: 44.9483 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "I", "", "", ""], E: "Chrome for Android", F: { I: 1745971200 } }, M: { A: { GC: 0.336815 }, B: "moz", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "GC", "", "", ""], E: "Firefox for Android", F: { GC: 1743465600 } }, N: { A: { A: 0, B: 0 }, B: "ms", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "A", "B", "", "", ""], E: "IE Mobile", F: { A: 1340150400, B: 1353456e3 } }, O: { A: { JC: 0.86428 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "JC", "", "", ""], E: "UC Browser for Android", F: { JC: 1710115200 }, D: { JC: "webkit" } }, P: { A: { "1": 0, "2": 0.0220266, "3": 0.0220266, "4": 0.0330398, "5": 0.0440531, "6": 0.0440531, "7": 0.0770929, "8": 1.68503, J: 0.0110133, fD: 0, gD: 0, hD: 0.0110133, iD: 0, jD: 0, UC: 0, kD: 0, lD: 0, mD: 0, nD: 0, oD: 0, KC: 0, LC: 0.0110133, MC: 0, pD: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "J", "fD", "gD", "hD", "iD", "jD", "UC", "kD", "lD", "mD", "nD", "oD", "KC", "LC", "MC", "pD", "1", "2", "3", "4", "5", "6", "7", "8", "", "", ""], E: "Samsung Internet", F: { "1": 1677369600, "2": 1684454400, "3": 1689292800, "4": 1697587200, "5": 1711497600, "6": 1715126400, "7": 1717718400, "8": 1725667200, J: 1461024e3, fD: 1481846400, gD: 1509408e3, hD: 1528329600, iD: 1546128e3, jD: 1554163200, UC: 1567900800, kD: 1582588800, lD: 1593475200, mD: 1605657600, nD: 1618531200, oD: 1629072e3, KC: 1640736e3, LC: 1651708800, MC: 1659657600, pD: 1667260800 } }, Q: { A: { qD: 0.222425 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "qD", "", "", ""], E: "QQ Browser", F: { qD: 1710288e3 } }, R: { A: { rD: 0 }, B: "webkit", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "rD", "", "", ""], E: "Baidu Browser", F: { rD: 1710201600 } }, S: { A: { sD: 0.01271, tD: 0 }, B: "moz", C: ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "sD", "tD", "", "", ""], E: "KaiOS Browser", F: { sD: 1527811200, tD: 1631664e3 } } };
   }
 });
 
 // node_modules/caniuse-lite/dist/unpacker/agents.js
 var require_agents2 = __commonJS({
-  "node_modules/caniuse-lite/dist/unpacker/agents.js"(exports, module) {
+  "node_modules/caniuse-lite/dist/unpacker/agents.js"(exports2, module2) {
     "use strict";
     var browsers = require_browsers2().browsers;
     var versions = require_browserVersions2().browserVersions;
@@ -52880,7 +56573,7 @@ var require_agents2 = __commonJS({
         return usage;
       }, {});
     }
-    module.exports.agents = Object.keys(agentsData).reduce((map2, key) => {
+    module2.exports.agents = Object.keys(agentsData).reduce((map2, key) => {
       let versionsData = agentsData[key];
       map2[browsers[key]] = Object.keys(versionsData).reduce((data, entry) => {
         if (entry === "A") {
@@ -52918,8 +56611,8 @@ var require_agents2 = __commonJS({
 
 // node_modules/electron-to-chromium/versions.js
 var require_versions = __commonJS({
-  "node_modules/electron-to-chromium/versions.js"(exports, module) {
-    module.exports = {
+  "node_modules/electron-to-chromium/versions.js"(exports2, module2) {
+    module2.exports = {
       "0.20": "39",
       "0.21": "41",
       "0.22": "41",
@@ -53116,14 +56809,14 @@ var require_versions = __commonJS({
 
 // node_modules/node-releases/data/release-schedule/release-schedule.json
 var require_release_schedule = __commonJS({
-  "node_modules/node-releases/data/release-schedule/release-schedule.json"(exports, module) {
-    module.exports = { "v0.8": { start: "2012-06-25", end: "2014-07-31" }, "v0.10": { start: "2013-03-11", end: "2016-10-31" }, "v0.12": { start: "2015-02-06", end: "2016-12-31" }, v4: { start: "2015-09-08", lts: "2015-10-12", maintenance: "2017-04-01", end: "2018-04-30", codename: "Argon" }, v5: { start: "2015-10-29", maintenance: "2016-04-30", end: "2016-06-30" }, v6: { start: "2016-04-26", lts: "2016-10-18", maintenance: "2018-04-30", end: "2019-04-30", codename: "Boron" }, v7: { start: "2016-10-25", maintenance: "2017-04-30", end: "2017-06-30" }, v8: { start: "2017-05-30", lts: "2017-10-31", maintenance: "2019-01-01", end: "2019-12-31", codename: "Carbon" }, v9: { start: "2017-10-01", maintenance: "2018-04-01", end: "2018-06-30" }, v10: { start: "2018-04-24", lts: "2018-10-30", maintenance: "2020-05-19", end: "2021-04-30", codename: "Dubnium" }, v11: { start: "2018-10-23", maintenance: "2019-04-22", end: "2019-06-01" }, v12: { start: "2019-04-23", lts: "2019-10-21", maintenance: "2020-11-30", end: "2022-04-30", codename: "Erbium" }, v13: { start: "2019-10-22", maintenance: "2020-04-01", end: "2020-06-01" }, v14: { start: "2020-04-21", lts: "2020-10-27", maintenance: "2021-10-19", end: "2023-04-30", codename: "Fermium" }, v15: { start: "2020-10-20", maintenance: "2021-04-01", end: "2021-06-01" }, v16: { start: "2021-04-20", lts: "2021-10-26", maintenance: "2022-10-18", end: "2023-09-11", codename: "Gallium" }, v17: { start: "2021-10-19", maintenance: "2022-04-01", end: "2022-06-01" }, v18: { start: "2022-04-19", lts: "2022-10-25", maintenance: "2023-10-18", end: "2025-04-30", codename: "Hydrogen" }, v19: { start: "2022-10-18", maintenance: "2023-04-01", end: "2023-06-01" }, v20: { start: "2023-04-18", lts: "2023-10-24", maintenance: "2024-10-22", end: "2026-04-30", codename: "Iron" }, v21: { start: "2023-10-17", maintenance: "2024-04-01", end: "2024-06-01" }, v22: { start: "2024-04-24", lts: "2024-10-29", maintenance: "2025-10-21", end: "2027-04-30", codename: "Jod" }, v23: { start: "2024-10-16", maintenance: "2025-04-01", end: "2025-06-01" }, v24: { start: "2025-04-22", lts: "2025-10-28", maintenance: "2026-10-20", end: "2028-04-30", codename: "" } };
+  "node_modules/node-releases/data/release-schedule/release-schedule.json"(exports2, module2) {
+    module2.exports = { "v0.8": { start: "2012-06-25", end: "2014-07-31" }, "v0.10": { start: "2013-03-11", end: "2016-10-31" }, "v0.12": { start: "2015-02-06", end: "2016-12-31" }, v4: { start: "2015-09-08", lts: "2015-10-12", maintenance: "2017-04-01", end: "2018-04-30", codename: "Argon" }, v5: { start: "2015-10-29", maintenance: "2016-04-30", end: "2016-06-30" }, v6: { start: "2016-04-26", lts: "2016-10-18", maintenance: "2018-04-30", end: "2019-04-30", codename: "Boron" }, v7: { start: "2016-10-25", maintenance: "2017-04-30", end: "2017-06-30" }, v8: { start: "2017-05-30", lts: "2017-10-31", maintenance: "2019-01-01", end: "2019-12-31", codename: "Carbon" }, v9: { start: "2017-10-01", maintenance: "2018-04-01", end: "2018-06-30" }, v10: { start: "2018-04-24", lts: "2018-10-30", maintenance: "2020-05-19", end: "2021-04-30", codename: "Dubnium" }, v11: { start: "2018-10-23", maintenance: "2019-04-22", end: "2019-06-01" }, v12: { start: "2019-04-23", lts: "2019-10-21", maintenance: "2020-11-30", end: "2022-04-30", codename: "Erbium" }, v13: { start: "2019-10-22", maintenance: "2020-04-01", end: "2020-06-01" }, v14: { start: "2020-04-21", lts: "2020-10-27", maintenance: "2021-10-19", end: "2023-04-30", codename: "Fermium" }, v15: { start: "2020-10-20", maintenance: "2021-04-01", end: "2021-06-01" }, v16: { start: "2021-04-20", lts: "2021-10-26", maintenance: "2022-10-18", end: "2023-09-11", codename: "Gallium" }, v17: { start: "2021-10-19", maintenance: "2022-04-01", end: "2022-06-01" }, v18: { start: "2022-04-19", lts: "2022-10-25", maintenance: "2023-10-18", end: "2025-04-30", codename: "Hydrogen" }, v19: { start: "2022-10-18", maintenance: "2023-04-01", end: "2023-06-01" }, v20: { start: "2023-04-18", lts: "2023-10-24", maintenance: "2024-10-22", end: "2026-04-30", codename: "Iron" }, v21: { start: "2023-10-17", maintenance: "2024-04-01", end: "2024-06-01" }, v22: { start: "2024-04-24", lts: "2024-10-29", maintenance: "2025-10-21", end: "2027-04-30", codename: "Jod" }, v23: { start: "2024-10-16", maintenance: "2025-04-01", end: "2025-06-01" }, v24: { start: "2025-04-22", lts: "2025-10-28", maintenance: "2026-10-20", end: "2028-04-30", codename: "" } };
   }
 });
 
 // node_modules/browserslist/error.js
 var require_error = __commonJS({
-  "node_modules/browserslist/error.js"(exports, module) {
+  "node_modules/browserslist/error.js"(exports2, module2) {
     function BrowserslistError(message) {
       this.name = "BrowserslistError";
       this.message = message;
@@ -53133,14 +56826,14 @@ var require_error = __commonJS({
       }
     }
     BrowserslistError.prototype = Error.prototype;
-    module.exports = BrowserslistError;
+    module2.exports = BrowserslistError;
   }
 });
 
 // node_modules/caniuse-lite/dist/lib/statuses.js
 var require_statuses = __commonJS({
-  "node_modules/caniuse-lite/dist/lib/statuses.js"(exports, module) {
-    module.exports = {
+  "node_modules/caniuse-lite/dist/lib/statuses.js"(exports2, module2) {
+    module2.exports = {
       1: "ls",
       // WHATWG Living Standard
       2: "rec",
@@ -53161,8 +56854,8 @@ var require_statuses = __commonJS({
 
 // node_modules/caniuse-lite/dist/lib/supported.js
 var require_supported = __commonJS({
-  "node_modules/caniuse-lite/dist/lib/supported.js"(exports, module) {
-    module.exports = {
+  "node_modules/caniuse-lite/dist/lib/supported.js"(exports2, module2) {
+    module2.exports = {
       y: 1 << 0,
       n: 1 << 1,
       a: 1 << 2,
@@ -53176,7 +56869,7 @@ var require_supported = __commonJS({
 
 // node_modules/caniuse-lite/dist/unpacker/feature.js
 var require_feature = __commonJS({
-  "node_modules/caniuse-lite/dist/unpacker/feature.js"(exports, module) {
+  "node_modules/caniuse-lite/dist/unpacker/feature.js"(exports2, module2) {
     "use strict";
     var statuses = require_statuses();
     var supported = require_supported();
@@ -53219,14 +56912,14 @@ var require_feature = __commonJS({
       }, {});
       return unpacked;
     }
-    module.exports = unpackFeature;
-    module.exports.default = unpackFeature;
+    module2.exports = unpackFeature;
+    module2.exports.default = unpackFeature;
   }
 });
 
 // node_modules/caniuse-lite/dist/unpacker/region.js
 var require_region = __commonJS({
-  "node_modules/caniuse-lite/dist/unpacker/region.js"(exports, module) {
+  "node_modules/caniuse-lite/dist/unpacker/region.js"(exports2, module2) {
     "use strict";
     var browsers = require_browsers2().browsers;
     function unpackRegion(packed) {
@@ -53244,18 +56937,18 @@ var require_region = __commonJS({
         return list;
       }, {});
     }
-    module.exports = unpackRegion;
-    module.exports.default = unpackRegion;
+    module2.exports = unpackRegion;
+    module2.exports.default = unpackRegion;
   }
 });
 
 // node_modules/browserslist/node.js
 var require_node3 = __commonJS({
-  "node_modules/browserslist/node.js"(exports, module) {
+  "node_modules/browserslist/node.js"(exports2, module2) {
     var feature = require_feature().default;
     var region = require_region().default;
-    var fs2 = __require("fs");
-    var path3 = __require("path");
+    var fs2 = require("fs");
+    var path3 = require("path");
     var BrowserslistError = require_error();
     var IS_SECTION = /^\s*\[(.+)]\s*$/;
     var CONFIG_PATTERN = /^browserslist-config-/;
@@ -53386,7 +57079,7 @@ var require_node3 = __commonJS({
         return parseConfigCache[file2];
       }
       var isPackage = path3.basename(file2) === "package.json";
-      var result = isPackage ? parsePackage(file2) : module.exports.readConfig(file2);
+      var result = isPackage ? parsePackage(file2) : module2.exports.readConfig(file2);
       if (!process.env.BROWSERSLIST_DISABLE_CACHE) {
         parseConfigCache[file2] = result;
       }
@@ -53443,12 +57136,12 @@ var require_node3 = __commonJS({
         }
       }
     }
-    module.exports = {
+    module2.exports = {
       loadQueries: function loadQueries(ctx, name) {
         if (!ctx.dangerousExtend && !process.env.BROWSERSLIST_DANGEROUS_EXTEND) {
           checkExtend(name);
         }
-        var queries = __require(__require.resolve(name, { paths: [".", ctx.path] }));
+        var queries = require(require.resolve(name, { paths: [".", ctx.path] }));
         if (typeof queries === "object" && queries !== null && queries.__esModule) {
           queries = queries.default;
         }
@@ -53469,7 +57162,7 @@ var require_node3 = __commonJS({
         if (!ctx.dangerousExtend && !process.env.BROWSERSLIST_DANGEROUS_EXTEND) {
           checkExtend(name);
         }
-        var stats = __require(__require.resolve(
+        var stats = require(require.resolve(
           path3.join(name, "browserslist-stats.json"),
           { paths: ["."] }
         ));
@@ -53507,7 +57200,7 @@ var require_node3 = __commonJS({
           var file2 = opts.config || process.env.BROWSERSLIST_CONFIG;
           return pickEnv(parsePackageOrReadConfig(file2), opts);
         } else if (opts.path) {
-          return pickEnv(module.exports.findConfig(opts.path), opts);
+          return pickEnv(module2.exports.findConfig(opts.path), opts);
         } else {
           return void 0;
         }
@@ -53517,7 +57210,7 @@ var require_node3 = __commonJS({
         if (!usage[code]) {
           var compressed;
           try {
-            compressed = __require("caniuse-lite/data/regions/" + code + ".js");
+            compressed = require("caniuse-lite/data/regions/" + code + ".js");
           } catch (e) {
             throw new BrowserslistError("Unknown region name `" + code + "`.");
           }
@@ -53537,7 +57230,7 @@ var require_node3 = __commonJS({
           return;
         var compressed;
         try {
-          compressed = __require("caniuse-lite/data/features/" + name + ".js");
+          compressed = require("caniuse-lite/data/features/" + name + ".js");
         } catch (e) {
           throw new BrowserslistError("Unknown feature name `" + name + "`.");
         }
@@ -53580,7 +57273,7 @@ var require_node3 = __commonJS({
         if (!isFile(file2)) {
           throw new BrowserslistError("Can't read " + file2 + " config");
         }
-        return module.exports.parseConfig(fs2.readFileSync(file2));
+        return module2.exports.parseConfig(fs2.readFileSync(file2));
       },
       findConfigFile: function findConfigFile(from) {
         return eachParent(
@@ -53660,7 +57353,7 @@ var require_node3 = __commonJS({
 
 // node_modules/browserslist/parse.js
 var require_parse3 = __commonJS({
-  "node_modules/browserslist/parse.js"(exports, module) {
+  "node_modules/browserslist/parse.js"(exports2, module2) {
     var AND_REGEXP = /^\s+and\s+(.*)/i;
     var OR_REGEXP = /^(?:,\s*|\s+or\s+)(.*)/i;
     function flatten(array2) {
@@ -53721,7 +57414,7 @@ var require_parse3 = __commonJS({
         return false;
       });
     }
-    module.exports = function parse3(all, queries) {
+    module2.exports = function parse3(all, queries) {
       if (!Array.isArray(queries))
         queries = [queries];
       return flatten(
@@ -53739,12 +57432,12 @@ var require_parse3 = __commonJS({
 
 // node_modules/browserslist/index.js
 var require_browserslist = __commonJS({
-  "node_modules/browserslist/index.js"(exports, module) {
+  "node_modules/browserslist/index.js"(exports2, module2) {
     var jsReleases = require_envs();
     var agents = require_agents2().agents;
     var e2c = require_versions();
     var jsEOL = require_release_schedule();
-    var path3 = __require("path");
+    var path3 = require("path");
     var BrowserslistError = require_error();
     var env = require_node3();
     var parseWithoutCache = require_parse3();
@@ -54865,18 +58558,18 @@ var require_browserslist = __commonJS({
         return release.version;
       });
     })();
-    module.exports = browserslist;
+    module2.exports = browserslist;
   }
 });
 
 // node_modules/@babel/helper-validator-option/lib/find-suggestion.js
 var require_find_suggestion = __commonJS({
-  "node_modules/@babel/helper-validator-option/lib/find-suggestion.js"(exports) {
+  "node_modules/@babel/helper-validator-option/lib/find-suggestion.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.findSuggestion = findSuggestion;
+    exports2.findSuggestion = findSuggestion;
     var {
       min
     } = Math;
@@ -54909,12 +58602,12 @@ var require_find_suggestion = __commonJS({
 
 // node_modules/@babel/helper-validator-option/lib/validator.js
 var require_validator = __commonJS({
-  "node_modules/@babel/helper-validator-option/lib/validator.js"(exports) {
+  "node_modules/@babel/helper-validator-option/lib/validator.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.OptionValidator = void 0;
+    exports2.OptionValidator = void 0;
     var _findSuggestion = require_find_suggestion();
     var OptionValidator = class {
       constructor(descriptor) {
@@ -54954,24 +58647,24 @@ var require_validator = __commonJS({
         return `${this.descriptor}: ${message}`;
       }
     };
-    exports.OptionValidator = OptionValidator;
+    exports2.OptionValidator = OptionValidator;
   }
 });
 
 // node_modules/@babel/helper-validator-option/lib/index.js
 var require_lib13 = __commonJS({
-  "node_modules/@babel/helper-validator-option/lib/index.js"(exports) {
+  "node_modules/@babel/helper-validator-option/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "OptionValidator", {
+    Object.defineProperty(exports2, "OptionValidator", {
       enumerable: true,
       get: function() {
         return _validator.OptionValidator;
       }
     });
-    Object.defineProperty(exports, "findSuggestion", {
+    Object.defineProperty(exports2, "findSuggestion", {
       enumerable: true,
       get: function() {
         return _findSuggestion.findSuggestion;
@@ -54984,9 +58677,9 @@ var require_lib13 = __commonJS({
 
 // node_modules/yallist/iterator.js
 var require_iterator = __commonJS({
-  "node_modules/yallist/iterator.js"(exports, module) {
+  "node_modules/yallist/iterator.js"(exports2, module2) {
     "use strict";
-    module.exports = function(Yallist) {
+    module2.exports = function(Yallist) {
       Yallist.prototype[Symbol.iterator] = function* () {
         for (let walker = this.head; walker; walker = walker.next) {
           yield walker.value;
@@ -54998,9 +58691,9 @@ var require_iterator = __commonJS({
 
 // node_modules/yallist/yallist.js
 var require_yallist = __commonJS({
-  "node_modules/yallist/yallist.js"(exports, module) {
+  "node_modules/yallist/yallist.js"(exports2, module2) {
     "use strict";
-    module.exports = Yallist;
+    module2.exports = Yallist;
     Yallist.Node = Node;
     Yallist.create = Yallist;
     function Yallist(list) {
@@ -55367,7 +59060,7 @@ var require_yallist = __commonJS({
 
 // node_modules/lru-cache/index.js
 var require_lru_cache = __commonJS({
-  "node_modules/lru-cache/index.js"(exports, module) {
+  "node_modules/lru-cache/index.js"(exports2, module2) {
     "use strict";
     var Yallist = require_yallist();
     var MAX = Symbol("max");
@@ -55631,22 +59324,22 @@ var require_lru_cache = __commonJS({
       if (hit)
         fn.call(thisp, hit.value, hit.key, self2);
     };
-    module.exports = LRUCache;
+    module2.exports = LRUCache;
   }
 });
 
 // node_modules/@babel/helper-compilation-targets/lib/targets.js
 var require_targets = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/targets.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/targets.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.unreleasedLabels = exports.browserNameMap = void 0;
-    var unreleasedLabels = exports.unreleasedLabels = {
+    exports2.unreleasedLabels = exports2.browserNameMap = void 0;
+    var unreleasedLabels = exports2.unreleasedLabels = {
       safari: "tp"
     };
-    var browserNameMap = exports.browserNameMap = {
+    var browserNameMap = exports2.browserNameMap = {
       and_chr: "chrome",
       and_ff: "firefox",
       android: "android",
@@ -55668,17 +59361,17 @@ var require_targets = __commonJS({
 
 // node_modules/@babel/helper-compilation-targets/lib/utils.js
 var require_utils3 = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/utils.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/utils.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.getHighestUnreleased = getHighestUnreleased;
-    exports.getLowestImplementedVersion = getLowestImplementedVersion;
-    exports.getLowestUnreleased = getLowestUnreleased;
-    exports.isUnreleasedVersion = isUnreleasedVersion;
-    exports.semverMin = semverMin;
-    exports.semverify = semverify;
+    exports2.getHighestUnreleased = getHighestUnreleased;
+    exports2.getLowestImplementedVersion = getLowestImplementedVersion;
+    exports2.getLowestUnreleased = getLowestUnreleased;
+    exports2.isUnreleasedVersion = isUnreleasedVersion;
+    exports2.semverMin = semverMin;
+    exports2.semverify = semverify;
     var _semver = require_semver();
     var _helperValidatorOption = require_lib13();
     var _targets = require_targets();
@@ -55729,13 +59422,13 @@ var require_utils3 = __commonJS({
 
 // node_modules/@babel/helper-compilation-targets/lib/options.js
 var require_options2 = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/options.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/options.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.TargetNames = void 0;
-    var TargetNames = exports.TargetNames = {
+    exports2.TargetNames = void 0;
+    var TargetNames = exports2.TargetNames = {
       node: "node",
       deno: "deno",
       chrome: "chrome",
@@ -55756,13 +59449,13 @@ var require_options2 = __commonJS({
 
 // node_modules/@babel/helper-compilation-targets/lib/pretty.js
 var require_pretty = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/pretty.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/pretty.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.prettifyTargets = prettifyTargets;
-    exports.prettifyVersion = prettifyVersion;
+    exports2.prettifyTargets = prettifyTargets;
+    exports2.prettifyVersion = prettifyVersion;
     var _semver = require_semver();
     var _targets = require_targets();
     function prettifyVersion(version3) {
@@ -55799,12 +59492,12 @@ var require_pretty = __commonJS({
 
 // node_modules/@babel/helper-compilation-targets/lib/debug.js
 var require_debug = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/debug.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/debug.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.getInclusionReasons = getInclusionReasons;
+    exports2.getInclusionReasons = getInclusionReasons;
     var _semver = require_semver();
     var _pretty = require_pretty();
     var _utils = require_utils3();
@@ -55830,8 +59523,8 @@ var require_debug = __commonJS({
 
 // node_modules/@babel/compat-data/data/plugins.json
 var require_plugins = __commonJS({
-  "node_modules/@babel/compat-data/data/plugins.json"(exports, module) {
-    module.exports = {
+  "node_modules/@babel/compat-data/data/plugins.json"(exports2, module2) {
+    module2.exports = {
       "transform-duplicate-named-capturing-groups-regex": {
         chrome: "126",
         opera: "112",
@@ -56661,21 +60354,21 @@ var require_plugins = __commonJS({
 
 // node_modules/@babel/compat-data/plugins.js
 var require_plugins2 = __commonJS({
-  "node_modules/@babel/compat-data/plugins.js"(exports, module) {
-    module.exports = require_plugins();
+  "node_modules/@babel/compat-data/plugins.js"(exports2, module2) {
+    module2.exports = require_plugins();
   }
 });
 
 // node_modules/@babel/helper-compilation-targets/lib/filter-items.js
 var require_filter_items = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/filter-items.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/filter-items.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = filterItems;
-    exports.isRequired = isRequired;
-    exports.targetsSupported = targetsSupported;
+    exports2.default = filterItems;
+    exports2.isRequired = isRequired;
+    exports2.targetsSupported = targetsSupported;
     var _semver = require_semver();
     var _utils = require_utils3();
     var pluginsCompatData = require_plugins2();
@@ -56740,8 +60433,8 @@ var require_filter_items = __commonJS({
 
 // node_modules/@babel/compat-data/data/native-modules.json
 var require_native_modules = __commonJS({
-  "node_modules/@babel/compat-data/data/native-modules.json"(exports, module) {
-    module.exports = {
+  "node_modules/@babel/compat-data/data/native-modules.json"(exports2, module2) {
+    module2.exports = {
       "es6.module": {
         chrome: "61",
         and_chr: "61",
@@ -56764,51 +60457,51 @@ var require_native_modules = __commonJS({
 
 // node_modules/@babel/compat-data/native-modules.js
 var require_native_modules2 = __commonJS({
-  "node_modules/@babel/compat-data/native-modules.js"(exports, module) {
-    module.exports = require_native_modules();
+  "node_modules/@babel/compat-data/native-modules.js"(exports2, module2) {
+    module2.exports = require_native_modules();
   }
 });
 
 // node_modules/@babel/helper-compilation-targets/lib/index.js
 var require_lib14 = __commonJS({
-  "node_modules/@babel/helper-compilation-targets/lib/index.js"(exports) {
+  "node_modules/@babel/helper-compilation-targets/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "TargetNames", {
+    Object.defineProperty(exports2, "TargetNames", {
       enumerable: true,
       get: function() {
         return _options.TargetNames;
       }
     });
-    exports.default = getTargets;
-    Object.defineProperty(exports, "filterItems", {
+    exports2.default = getTargets;
+    Object.defineProperty(exports2, "filterItems", {
       enumerable: true,
       get: function() {
         return _filterItems.default;
       }
     });
-    Object.defineProperty(exports, "getInclusionReasons", {
+    Object.defineProperty(exports2, "getInclusionReasons", {
       enumerable: true,
       get: function() {
         return _debug.getInclusionReasons;
       }
     });
-    exports.isBrowsersQueryValid = isBrowsersQueryValid;
-    Object.defineProperty(exports, "isRequired", {
+    exports2.isBrowsersQueryValid = isBrowsersQueryValid;
+    Object.defineProperty(exports2, "isRequired", {
       enumerable: true,
       get: function() {
         return _filterItems.isRequired;
       }
     });
-    Object.defineProperty(exports, "prettifyTargets", {
+    Object.defineProperty(exports2, "prettifyTargets", {
       enumerable: true,
       get: function() {
         return _pretty.prettifyTargets;
       }
     });
-    Object.defineProperty(exports, "unreleasedLabels", {
+    Object.defineProperty(exports2, "unreleasedLabels", {
       enumerable: true,
       get: function() {
         return _targets.unreleasedLabels;
@@ -57007,15 +60700,15 @@ getting parsed as 6.1, which can lead to unexpected behavior.
 
 // node_modules/@babel/core/lib/config/resolve-targets.js
 var require_resolve_targets = __commonJS({
-  "node_modules/@babel/core/lib/config/resolve-targets.js"(exports) {
+  "node_modules/@babel/core/lib/config/resolve-targets.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.resolveBrowserslistConfigFile = resolveBrowserslistConfigFile;
-    exports.resolveTargets = resolveTargets;
+    exports2.resolveBrowserslistConfigFile = resolveBrowserslistConfigFile;
+    exports2.resolveTargets = resolveTargets;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -57069,14 +60762,14 @@ var require_resolve_targets = __commonJS({
 
 // node_modules/@babel/core/lib/config/config-descriptors.js
 var require_config_descriptors = __commonJS({
-  "node_modules/@babel/core/lib/config/config-descriptors.js"(exports) {
+  "node_modules/@babel/core/lib/config/config-descriptors.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.createCachedDescriptors = createCachedDescriptors;
-    exports.createDescriptor = createDescriptor;
-    exports.createUncachedDescriptors = createUncachedDescriptors;
+    exports2.createCachedDescriptors = createCachedDescriptors;
+    exports2.createDescriptor = createDescriptor;
+    exports2.createUncachedDescriptors = createUncachedDescriptors;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -57263,16 +60956,16 @@ var require_config_descriptors = __commonJS({
 
 // node_modules/@babel/core/lib/config/item.js
 var require_item = __commonJS({
-  "node_modules/@babel/core/lib/config/item.js"(exports) {
+  "node_modules/@babel/core/lib/config/item.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.createConfigItem = createConfigItem;
-    exports.createItemFromDescriptor = createItemFromDescriptor;
-    exports.getItemDescriptor = getItemDescriptor;
+    exports2.createConfigItem = createConfigItem;
+    exports2.createItemFromDescriptor = createItemFromDescriptor;
+    exports2.getItemDescriptor = getItemDescriptor;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -57332,13 +61025,13 @@ var require_item = __commonJS({
 
 // node_modules/@babel/core/lib/config/validation/removed.js
 var require_removed = __commonJS({
-  "node_modules/@babel/core/lib/config/validation/removed.js"(exports) {
+  "node_modules/@babel/core/lib/config/validation/removed.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
-    var _default3 = exports.default = {
+    exports2.default = void 0;
+    var _default3 = exports2.default = {
       auxiliaryComment: {
         message: "Use `auxiliaryCommentBefore` or `auxiliaryCommentAfter`"
       },
@@ -57402,31 +61095,31 @@ var require_removed = __commonJS({
 
 // node_modules/@babel/core/lib/config/validation/option-assertions.js
 var require_option_assertions = __commonJS({
-  "node_modules/@babel/core/lib/config/validation/option-assertions.js"(exports) {
+  "node_modules/@babel/core/lib/config/validation/option-assertions.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.access = access;
-    exports.assertArray = assertArray;
-    exports.assertAssumptions = assertAssumptions;
-    exports.assertBabelrcSearch = assertBabelrcSearch;
-    exports.assertBoolean = assertBoolean;
-    exports.assertCallerMetadata = assertCallerMetadata;
-    exports.assertCompact = assertCompact;
-    exports.assertConfigApplicableTest = assertConfigApplicableTest;
-    exports.assertConfigFileSearch = assertConfigFileSearch;
-    exports.assertFunction = assertFunction;
-    exports.assertIgnoreList = assertIgnoreList;
-    exports.assertInputSourceMap = assertInputSourceMap;
-    exports.assertObject = assertObject;
-    exports.assertPluginList = assertPluginList;
-    exports.assertRootMode = assertRootMode;
-    exports.assertSourceMaps = assertSourceMaps;
-    exports.assertSourceType = assertSourceType;
-    exports.assertString = assertString;
-    exports.assertTargets = assertTargets;
-    exports.msg = msg;
+    exports2.access = access;
+    exports2.assertArray = assertArray;
+    exports2.assertAssumptions = assertAssumptions;
+    exports2.assertBabelrcSearch = assertBabelrcSearch;
+    exports2.assertBoolean = assertBoolean;
+    exports2.assertCallerMetadata = assertCallerMetadata;
+    exports2.assertCompact = assertCompact;
+    exports2.assertConfigApplicableTest = assertConfigApplicableTest;
+    exports2.assertConfigFileSearch = assertConfigFileSearch;
+    exports2.assertFunction = assertFunction;
+    exports2.assertIgnoreList = assertIgnoreList;
+    exports2.assertInputSourceMap = assertInputSourceMap;
+    exports2.assertObject = assertObject;
+    exports2.assertPluginList = assertPluginList;
+    exports2.assertRootMode = assertRootMode;
+    exports2.assertSourceMaps = assertSourceMaps;
+    exports2.assertSourceType = assertSourceType;
+    exports2.assertString = assertString;
+    exports2.assertTargets = assertTargets;
+    exports2.msg = msg;
     function _helperCompilationTargets() {
       const data = require_lib14();
       _helperCompilationTargets = function() {
@@ -57690,14 +61383,14 @@ var require_option_assertions = __commonJS({
 
 // node_modules/@babel/core/lib/config/validation/options.js
 var require_options3 = __commonJS({
-  "node_modules/@babel/core/lib/config/validation/options.js"(exports) {
+  "node_modules/@babel/core/lib/config/validation/options.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.assumptionsNames = void 0;
-    exports.checkNoUnwrappedItemOptionPairs = checkNoUnwrappedItemOptionPairs;
-    exports.validate = validate;
+    exports2.assumptionsNames = void 0;
+    exports2.checkNoUnwrappedItemOptionPairs = checkNoUnwrappedItemOptionPairs;
+    exports2.validate = validate;
     var _removed = require_removed();
     var _optionAssertions = require_option_assertions();
     var _configError = require_config_error();
@@ -57763,7 +61456,7 @@ var require_options3 = __commonJS({
       });
     }
     var knownAssumptions = ["arrayLikeIsIterable", "constantReexports", "constantSuper", "enumerableModuleMeta", "ignoreFunctionLength", "ignoreToPrimitiveHint", "iterableIsArray", "mutableTemplateObject", "noClassCalls", "noDocumentAll", "noIncompleteNsImportDetection", "noNewArrows", "noUninitializedPrivateFieldAccess", "objectRestNoSymbols", "privateFieldsAsSymbols", "privateFieldsAsProperties", "pureGetters", "setClassMethods", "setComputedProperties", "setPublicClassFields", "setSpreadProperties", "skipForOfIteratorClosing", "superIsCallableConstructor"];
-    var assumptionsNames = exports.assumptionsNames = new Set(knownAssumptions);
+    var assumptionsNames = exports2.assumptionsNames = new Set(knownAssumptions);
     function getSource(loc) {
       return loc.type === "root" ? loc.source : getSource(loc.parent);
     }
@@ -57890,14 +61583,14 @@ To be a valid ${type}, its name and options should be wrapped in a pair of brack
 
 // node_modules/@babel/core/lib/config/pattern-to-regex.js
 var require_pattern_to_regex = __commonJS({
-  "node_modules/@babel/core/lib/config/pattern-to-regex.js"(exports) {
+  "node_modules/@babel/core/lib/config/pattern-to-regex.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = pathToPattern;
+    exports2.default = pathToPattern;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -57932,12 +61625,12 @@ var require_pattern_to_regex = __commonJS({
 
 // node_modules/@babel/core/lib/config/printer.js
 var require_printer2 = __commonJS({
-  "node_modules/@babel/core/lib/config/printer.js"(exports) {
+  "node_modules/@babel/core/lib/config/printer.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ConfigPrinter = exports.ChainFormatter = void 0;
+    exports2.ConfigPrinter = exports2.ChainFormatter = void 0;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -57945,7 +61638,7 @@ var require_printer2 = __commonJS({
       };
       return data;
     }
-    var ChainFormatter = exports.ChainFormatter = {
+    var ChainFormatter = exports2.ChainFormatter = {
       Programmatic: 0,
       Config: 1
     };
@@ -58046,22 +61739,22 @@ ${content}`;
         return configs.join("\n\n");
       }
     };
-    exports.ConfigPrinter = ConfigPrinter;
+    exports2.ConfigPrinter = ConfigPrinter;
   }
 });
 
 // node_modules/@babel/core/lib/config/config-chain.js
 var require_config_chain = __commonJS({
-  "node_modules/@babel/core/lib/config/config-chain.js"(exports) {
+  "node_modules/@babel/core/lib/config/config-chain.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.buildPresetChain = buildPresetChain;
-    exports.buildPresetChainWalker = void 0;
-    exports.buildRootChain = buildRootChain;
+    exports2.buildPresetChain = buildPresetChain;
+    exports2.buildPresetChainWalker = void 0;
+    exports2.buildRootChain = buildRootChain;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -58094,7 +61787,7 @@ var require_config_chain = __commonJS({
         files: /* @__PURE__ */ new Set()
       };
     }
-    var buildPresetChainWalker = exports.buildPresetChainWalker = makeChainWalker({
+    var buildPresetChainWalker = exports2.buildPresetChainWalker = makeChainWalker({
       root: (preset) => loadPresetDescriptors(preset),
       env: (preset, envName) => loadPresetEnvDescriptors(preset)(envName),
       overrides: (preset, index) => loadPresetOverridesDescriptors(preset)(index),
@@ -58538,12 +62231,12 @@ File already loaded following the config chain:
 
 // node_modules/@babel/core/lib/config/validation/plugins.js
 var require_plugins3 = __commonJS({
-  "node_modules/@babel/core/lib/config/validation/plugins.js"(exports) {
+  "node_modules/@babel/core/lib/config/validation/plugins.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.validatePluginObject = validatePluginObject;
+    exports2.validatePluginObject = validatePluginObject;
     var _optionAssertions = require_option_assertions();
     var VALIDATORS = {
       name: _optionAssertions.assertString,
@@ -58607,12 +62300,12 @@ var require_plugins3 = __commonJS({
 
 // node_modules/@babel/core/lib/config/helpers/environment.js
 var require_environment = __commonJS({
-  "node_modules/@babel/core/lib/config/helpers/environment.js"(exports) {
+  "node_modules/@babel/core/lib/config/helpers/environment.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.getEnv = getEnv;
+    exports2.getEnv = getEnv;
     function getEnv(defaultValue = "development") {
       return process.env.BABEL_ENV || process.env.NODE_ENV || defaultValue;
     }
@@ -58621,15 +62314,15 @@ var require_environment = __commonJS({
 
 // node_modules/@babel/core/lib/config/partial.js
 var require_partial = __commonJS({
-  "node_modules/@babel/core/lib/config/partial.js"(exports) {
+  "node_modules/@babel/core/lib/config/partial.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = loadPrivatePartialConfig;
-    exports.loadPartialConfig = loadPartialConfig;
+    exports2.default = loadPrivatePartialConfig;
+    exports2.loadPartialConfig = loadPartialConfig;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -58794,12 +62487,12 @@ One of the following config files must be in the directory tree: "${_index.ROOT_
 
 // node_modules/@babel/core/lib/config/full.js
 var require_full = __commonJS({
-  "node_modules/@babel/core/lib/config/full.js"(exports) {
+  "node_modules/@babel/core/lib/config/full.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -58827,7 +62520,7 @@ var require_full = __commonJS({
     var _configApi = require_config_api();
     var _partial = require_partial();
     var _configError = require_config_error();
-    var _default3 = exports.default = _gensync()(function* loadFullConfig(inputOpts) {
+    var _default3 = exports2.default = _gensync()(function* loadFullConfig(inputOpts) {
       var _opts$assumptions;
       const result = yield* (0, _partial.default)(inputOpts);
       if (!result) {
@@ -59115,26 +62808,26 @@ var require_full = __commonJS({
 
 // node_modules/@babel/core/lib/config/index.js
 var require_config = __commonJS({
-  "node_modules/@babel/core/lib/config/index.js"(exports) {
+  "node_modules/@babel/core/lib/config/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.createConfigItem = createConfigItem;
-    exports.createConfigItemAsync = createConfigItemAsync;
-    exports.createConfigItemSync = createConfigItemSync;
-    Object.defineProperty(exports, "default", {
+    exports2.createConfigItem = createConfigItem;
+    exports2.createConfigItemAsync = createConfigItemAsync;
+    exports2.createConfigItemSync = createConfigItemSync;
+    Object.defineProperty(exports2, "default", {
       enumerable: true,
       get: function() {
         return _full.default;
       }
     });
-    exports.loadOptions = loadOptions;
-    exports.loadOptionsAsync = loadOptionsAsync;
-    exports.loadOptionsSync = loadOptionsSync;
-    exports.loadPartialConfig = loadPartialConfig;
-    exports.loadPartialConfigAsync = loadPartialConfigAsync;
-    exports.loadPartialConfigSync = loadPartialConfigSync;
+    exports2.loadOptions = loadOptions;
+    exports2.loadOptionsAsync = loadOptionsAsync;
+    exports2.loadOptionsSync = loadOptionsSync;
+    exports2.loadPartialConfig = loadPartialConfig;
+    exports2.loadPartialConfigAsync = loadPartialConfigAsync;
+    exports2.loadPartialConfigSync = loadPartialConfigSync;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -59210,12 +62903,12 @@ var require_config = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/plugin-pass.js
 var require_plugin_pass = __commonJS({
-  "node_modules/@babel/core/lib/transformation/plugin-pass.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/plugin-pass.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var PluginPass = class {
       constructor(file2, key, options, isAsync2) {
         this._map = /* @__PURE__ */ new Map();
@@ -59248,7 +62941,7 @@ var require_plugin_pass = __commonJS({
         return this.file.buildCodeFrameError(node, msg, _Error);
       }
     };
-    exports.default = PluginPass;
+    exports2.default = PluginPass;
     {
       PluginPass.prototype.getModuleName = function getModuleName() {
         return this.file.getModuleName();
@@ -59262,12 +62955,12 @@ var require_plugin_pass = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/block-hoist-plugin.js
 var require_block_hoist_plugin = __commonJS({
-  "node_modules/@babel/core/lib/transformation/block-hoist-plugin.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/block-hoist-plugin.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = loadBlockHoistPlugin;
+    exports2.default = loadBlockHoistPlugin;
     function _traverse() {
       const data = require_lib9();
       _traverse = function() {
@@ -59351,14 +63044,14 @@ var require_block_hoist_plugin = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/normalize-opts.js
 var require_normalize_opts = __commonJS({
-  "node_modules/@babel/core/lib/transformation/normalize-opts.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/normalize-opts.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = normalizeOptions;
+    exports2.default = normalizeOptions;
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -59412,14 +63105,14 @@ var require_normalize_opts = __commonJS({
 
 // node_modules/convert-source-map/index.js
 var require_convert_source_map = __commonJS({
-  "node_modules/convert-source-map/index.js"(exports) {
+  "node_modules/convert-source-map/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "commentRegex", {
+    Object.defineProperty(exports2, "commentRegex", {
       get: function getCommentRegex() {
         return /^\s*?\/[\/\*][@#]\s+?sourceMappingURL=data:(((?:application|text)\/json)(?:;charset=([^;,]+?)?)?)?(?:;(base64))?,(.*?)$/mg;
       }
     });
-    Object.defineProperty(exports, "mapFileCommentRegex", {
+    Object.defineProperty(exports2, "mapFileCommentRegex", {
       get: function getMapFileCommentRegex() {
         return /(?:\/\/[@#][ \t]+?sourceMappingURL=([^\s'"`]+?)[ \t]*?$)|(?:\/\*[@#][ \t]+sourceMappingURL=([^*]+?)[ \t]*?(?:\*\/){1}[ \t]*?$)/mg;
       }
@@ -59450,7 +63143,7 @@ var require_convert_source_map = __commonJS({
       return sm.split(",").pop();
     }
     function readFromFileMap(sm, read) {
-      var r = exports.mapFileCommentRegex.exec(sm);
+      var r = exports2.mapFileCommentRegex.exec(sm);
       var filename = r[1] || r[2];
       try {
         var sm = read(filename);
@@ -59539,29 +63232,29 @@ var require_convert_source_map = __commonJS({
     Converter.prototype.getProperty = function(key) {
       return this.sourcemap[key];
     };
-    exports.fromObject = function(obj) {
+    exports2.fromObject = function(obj) {
       return new Converter(obj);
     };
-    exports.fromJSON = function(json3) {
+    exports2.fromJSON = function(json3) {
       return new Converter(json3, { isJSON: true });
     };
-    exports.fromURI = function(uri) {
+    exports2.fromURI = function(uri) {
       return new Converter(uri, { encoding: "uri" });
     };
-    exports.fromBase64 = function(base643) {
+    exports2.fromBase64 = function(base643) {
       return new Converter(base643, { encoding: "base64" });
     };
-    exports.fromComment = function(comment) {
+    exports2.fromComment = function(comment) {
       var m, encoding;
       comment = comment.replace(/^\/\*/g, "//").replace(/\*\/$/g, "");
-      m = exports.commentRegex.exec(comment);
+      m = exports2.commentRegex.exec(comment);
       encoding = m && m[4] || "uri";
       return new Converter(comment, { encoding, hasComment: true });
     };
     function makeConverter(sm) {
       return new Converter(sm, { isJSON: true });
     }
-    exports.fromMapFileComment = function(comment, read) {
+    exports2.fromMapFileComment = function(comment, read) {
       if (typeof read === "string") {
         throw new Error(
           "String directory paths are no longer supported with `fromMapFileComment`\nPlease review the Upgrading documentation at https://github.com/thlorenz/convert-source-map#upgrading"
@@ -59574,26 +63267,26 @@ var require_convert_source_map = __commonJS({
         return makeConverter(sm);
       }
     };
-    exports.fromSource = function(content) {
-      var m = content.match(exports.commentRegex);
-      return m ? exports.fromComment(m.pop()) : null;
+    exports2.fromSource = function(content) {
+      var m = content.match(exports2.commentRegex);
+      return m ? exports2.fromComment(m.pop()) : null;
     };
-    exports.fromMapFileSource = function(content, read) {
+    exports2.fromMapFileSource = function(content, read) {
       if (typeof read === "string") {
         throw new Error(
           "String directory paths are no longer supported with `fromMapFileSource`\nPlease review the Upgrading documentation at https://github.com/thlorenz/convert-source-map#upgrading"
         );
       }
-      var m = content.match(exports.mapFileCommentRegex);
-      return m ? exports.fromMapFileComment(m.pop(), read) : null;
+      var m = content.match(exports2.mapFileCommentRegex);
+      return m ? exports2.fromMapFileComment(m.pop(), read) : null;
     };
-    exports.removeComments = function(src) {
-      return src.replace(exports.commentRegex, "");
+    exports2.removeComments = function(src) {
+      return src.replace(exports2.commentRegex, "");
     };
-    exports.removeMapFileComments = function(src) {
-      return src.replace(exports.mapFileCommentRegex, "");
+    exports2.removeMapFileComments = function(src) {
+      return src.replace(exports2.mapFileCommentRegex, "");
     };
-    exports.generateMapFileComment = function(file2, options) {
+    exports2.generateMapFileComment = function(file2, options) {
       var data = "sourceMappingURL=" + file2;
       return options && options.multiline ? "/*# " + data + " */" : "//# " + data;
     };
@@ -59602,12 +63295,12 @@ var require_convert_source_map = __commonJS({
 
 // node_modules/@babel/core/lib/parser/util/missing-plugin-helper.js
 var require_missing_plugin_helper = __commonJS({
-  "node_modules/@babel/core/lib/parser/util/missing-plugin-helper.js"(exports) {
+  "node_modules/@babel/core/lib/parser/util/missing-plugin-helper.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = generateMissingPluginMessage;
+    exports2.default = generateMissingPluginMessage;
     var pluginNameMap = {
       asyncDoExpressions: {
         syntax: {
@@ -59947,12 +63640,12 @@ See https://babeljs.io/docs/configuration#print-effective-configs for more info.
 
 // node_modules/@babel/core/lib/parser/index.js
 var require_parser = __commonJS({
-  "node_modules/@babel/core/lib/parser/index.js"(exports) {
+  "node_modules/@babel/core/lib/parser/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = parser;
+    exports2.default = parser;
     function _parser() {
       const data = require_lib4();
       _parser = function() {
@@ -60031,12 +63724,12 @@ var require_parser = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/util/clone-deep.js
 var require_clone_deep = __commonJS({
-  "node_modules/@babel/core/lib/transformation/util/clone-deep.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/util/clone-deep.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = _default3;
+    exports2.default = _default3;
     var circleSet = /* @__PURE__ */ new Set();
     var depth = 0;
     function deepClone(value2, cache, allowCircle) {
@@ -60094,21 +63787,21 @@ var require_clone_deep = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/normalize-file.js
 var require_normalize_file = __commonJS({
-  "node_modules/@babel/core/lib/transformation/normalize-file.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/normalize-file.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = normalizeFile;
+    exports2.default = normalizeFile;
     function _fs() {
-      const data = __require("fs");
+      const data = require("fs");
       _fs = function() {
         return data;
       };
       return data;
     }
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -60225,10 +63918,10 @@ var require_normalize_file = __commonJS({
 
 // node_modules/@ampproject/remapping/dist/remapping.umd.js
 var require_remapping_umd = __commonJS({
-  "node_modules/@ampproject/remapping/dist/remapping.umd.js"(exports, module) {
+  "node_modules/@ampproject/remapping/dist/remapping.umd.js"(exports2, module2) {
     (function(global2, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory(require_trace_mapping_umd(), require_gen_mapping_umd()) : typeof define === "function" && define.amd ? define(["@jridgewell/trace-mapping", "@jridgewell/gen-mapping"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, global2.remapping = factory(global2.traceMapping, global2.genMapping));
-    })(exports, function(traceMapping, genMapping) {
+      typeof exports2 === "object" && typeof module2 !== "undefined" ? module2.exports = factory(require_trace_mapping_umd(), require_gen_mapping_umd()) : typeof define === "function" && define.amd ? define(["@jridgewell/trace-mapping", "@jridgewell/gen-mapping"], factory) : (global2 = typeof globalThis !== "undefined" ? globalThis : global2 || self, global2.remapping = factory(global2.traceMapping, global2.genMapping));
+    })(exports2, function(traceMapping, genMapping) {
       "use strict";
       const SOURCELESS_MAPPING = /* @__PURE__ */ SegmentObject("", -1, -1, "", null, false);
       const EMPTY_SOURCES = [];
@@ -60359,12 +64052,12 @@ Did you specify these with the most recent transformation maps first?`);
 
 // node_modules/@babel/core/lib/transformation/file/merge-map.js
 var require_merge_map = __commonJS({
-  "node_modules/@babel/core/lib/transformation/file/merge-map.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/file/merge-map.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = mergeSourceMap;
+    exports2.default = mergeSourceMap;
     function _remapping() {
       const data = require_remapping_umd();
       _remapping = function() {
@@ -60398,12 +64091,12 @@ var require_merge_map = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/file/generate.js
 var require_generate = __commonJS({
-  "node_modules/@babel/core/lib/transformation/file/generate.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/file/generate.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = generateCode;
+    exports2.default = generateCode;
     function _convertSourceMap() {
       const data = require_convert_source_map();
       _convertSourceMap = function() {
@@ -60485,12 +64178,12 @@ var require_generate = __commonJS({
 
 // node_modules/@babel/core/lib/transformation/index.js
 var require_transformation = __commonJS({
-  "node_modules/@babel/core/lib/transformation/index.js"(exports) {
+  "node_modules/@babel/core/lib/transformation/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.run = run;
+    exports2.run = run;
     function _traverse() {
       const data = require_lib9();
       _traverse = function() {
@@ -60579,14 +64272,14 @@ var require_transformation = __commonJS({
 
 // node_modules/@babel/core/lib/transform-file.js
 var require_transform_file = __commonJS({
-  "node_modules/@babel/core/lib/transform-file.js"(exports) {
+  "node_modules/@babel/core/lib/transform-file.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.transformFile = transformFile;
-    exports.transformFileAsync = transformFileAsync;
-    exports.transformFileSync = transformFileSync;
+    exports2.transformFile = transformFile;
+    exports2.transformFileAsync = transformFileAsync;
+    exports2.transformFileSync = transformFileSync;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -60621,8 +64314,8 @@ var require_transform_file = __commonJS({
 
 // node_modules/@babel/core/lib/config/files/import.cjs
 var require_import = __commonJS({
-  "node_modules/@babel/core/lib/config/files/import.cjs"(exports, module) {
-    module.exports = function import_(filepath) {
+  "node_modules/@babel/core/lib/config/files/import.cjs"(exports2, module2) {
+    module2.exports = function import_(filepath) {
       return import(filepath);
     };
   }
@@ -60630,8 +64323,8 @@ var require_import = __commonJS({
 
 // node_modules/@babel/preset-typescript/package.json
 var require_package2 = __commonJS({
-  "node_modules/@babel/preset-typescript/package.json"(exports, module) {
-    module.exports = {
+  "node_modules/@babel/preset-typescript/package.json"(exports2, module2) {
+    module2.exports = {
       name: "@babel/preset-typescript",
       version: "7.27.1",
       description: "Babel preset for TypeScript.",
@@ -60676,13 +64369,13 @@ var require_package2 = __commonJS({
 
 // node_modules/@babel/helper-plugin-utils/lib/index.js
 var require_lib15 = __commonJS({
-  "node_modules/@babel/helper-plugin-utils/lib/index.js"(exports) {
+  "node_modules/@babel/helper-plugin-utils/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.declare = declare;
-    exports.declarePreset = void 0;
+    exports2.declare = declare;
+    exports2.declarePreset = void 0;
     var apiPolyfills = {
       assertVersion: (api) => (range) => {
         throwVersionError(range, api.version);
@@ -60712,7 +64405,7 @@ var require_lib15 = __commonJS({
         return builder(clonedApi != null ? clonedApi : api, options || {}, dirname2);
       };
     }
-    var declarePreset = exports.declarePreset = declare;
+    var declarePreset = exports2.declarePreset = declare;
     function copyApiObject(api) {
       let proto = null;
       if (typeof api.version === "string" && /^7\./.test(api.version)) {
@@ -60757,12 +64450,12 @@ var require_lib15 = __commonJS({
 
 // node_modules/@babel/plugin-syntax-typescript/lib/index.js
 var require_lib16 = __commonJS({
-  "node_modules/@babel/plugin-syntax-typescript/lib/index.js"(exports) {
+  "node_modules/@babel/plugin-syntax-typescript/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _helperPluginUtils = require_lib15();
     {
       removePlugin = function(plugins, name) {
@@ -60779,7 +64472,7 @@ var require_lib16 = __commonJS({
       };
     }
     var removePlugin;
-    var _default3 = exports.default = (0, _helperPluginUtils.declare)((api, opts) => {
+    var _default3 = exports2.default = (0, _helperPluginUtils.declare)((api, opts) => {
       api.assertVersion(7);
       const {
         disallowAmbiguousJSXLike,
@@ -60818,9 +64511,9 @@ var require_lib16 = __commonJS({
 
 // node_modules/@babel/helper-member-expression-to-functions/lib/index.js
 var require_lib17 = __commonJS({
-  "node_modules/@babel/helper-member-expression-to-functions/lib/index.js"(exports) {
+  "node_modules/@babel/helper-member-expression-to-functions/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
+    Object.defineProperty(exports2, "__esModule", { value: true });
     var _t = require_lib3();
     function _interopNamespace(e) {
       if (e && e.__esModule)
@@ -61217,18 +64910,18 @@ var require_lib17 = __commonJS({
         memoiser: new AssignmentMemoiser()
       }));
     }
-    exports.default = memberExpressionToFunctions;
+    exports2.default = memberExpressionToFunctions;
   }
 });
 
 // node_modules/@babel/helper-optimise-call-expression/lib/index.js
 var require_lib18 = __commonJS({
-  "node_modules/@babel/helper-optimise-call-expression/lib/index.js"(exports) {
+  "node_modules/@babel/helper-optimise-call-expression/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = optimiseCallExpression;
+    exports2.default = optimiseCallExpression;
     var _t = require_lib3();
     var {
       callExpression,
@@ -61259,12 +64952,12 @@ var require_lib18 = __commonJS({
 
 // node_modules/@babel/helper-replace-supers/lib/index.js
 var require_lib19 = __commonJS({
-  "node_modules/@babel/helper-replace-supers/lib/index.js"(exports) {
+  "node_modules/@babel/helper-replace-supers/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _helperMemberExpressionToFunctions = require_lib17();
     var _helperOptimiseCallExpression = require_lib18();
     var _core = require_lib27();
@@ -61280,8 +64973,8 @@ var require_lib19 = __commonJS({
       thisExpression
     } = _core.types;
     {
-      exports.environmentVisitor = _traverse.visitors.environmentVisitor({});
-      exports.skipAllButComputedKey = function skipAllButComputedKey(path3) {
+      exports2.environmentVisitor = _traverse.visitors.environmentVisitor({});
+      exports2.skipAllButComputedKey = function skipAllButComputedKey(path3) {
         path3.skip();
         if (path3.node.computed) {
           path3.context.maybeQueue(path3.get("key"));
@@ -61563,18 +65256,18 @@ var require_lib19 = __commonJS({
         }, handler));
       }
     };
-    exports.default = ReplaceSupers;
+    exports2.default = ReplaceSupers;
   }
 });
 
 // node_modules/@babel/helper-annotate-as-pure/lib/index.js
 var require_lib20 = __commonJS({
-  "node_modules/@babel/helper-annotate-as-pure/lib/index.js"(exports) {
+  "node_modules/@babel/helper-annotate-as-pure/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = annotateAsPure;
+    exports2.default = annotateAsPure;
     var _t = require_lib3();
     var {
       addComment
@@ -61595,14 +65288,14 @@ var require_lib20 = __commonJS({
 
 // node_modules/@babel/helper-skip-transparent-expression-wrappers/lib/index.js
 var require_lib21 = __commonJS({
-  "node_modules/@babel/helper-skip-transparent-expression-wrappers/lib/index.js"(exports) {
+  "node_modules/@babel/helper-skip-transparent-expression-wrappers/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.isTransparentExprWrapper = isTransparentExprWrapper;
-    exports.skipTransparentExprWrapperNodes = skipTransparentExprWrapperNodes;
-    exports.skipTransparentExprWrappers = skipTransparentExprWrappers;
+    exports2.isTransparentExprWrapper = isTransparentExprWrapper;
+    exports2.skipTransparentExprWrapperNodes = skipTransparentExprWrapperNodes;
+    exports2.skipTransparentExprWrappers = skipTransparentExprWrappers;
     var _t = require_lib3();
     var {
       isParenthesizedExpression,
@@ -61632,12 +65325,12 @@ var require_lib21 = __commonJS({
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/typescript.js
 var require_typescript3 = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/typescript.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/typescript.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.assertFieldTransformed = assertFieldTransformed;
+    exports2.assertFieldTransformed = assertFieldTransformed;
     function assertFieldTransformed(path3) {
       if (path3.node.declare || false) {
         throw path3.buildCodeFrameError(`TypeScript 'declare' fields must first be transformed by @babel/plugin-transform-typescript.
@@ -61652,17 +65345,17 @@ If you have already enabled that plugin (or '@babel/preset-typescript'), make su
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/fields.js
 var require_fields = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/fields.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/fields.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.buildCheckInRHS = buildCheckInRHS;
-    exports.buildFieldsInitNodes = buildFieldsInitNodes;
-    exports.buildPrivateNamesMap = buildPrivateNamesMap;
-    exports.buildPrivateNamesNodes = buildPrivateNamesNodes;
-    exports.privateNameVisitorFactory = privateNameVisitorFactory;
-    exports.transformPrivateNamesUsage = transformPrivateNamesUsage;
+    exports2.buildCheckInRHS = buildCheckInRHS;
+    exports2.buildFieldsInitNodes = buildFieldsInitNodes;
+    exports2.buildPrivateNamesMap = buildPrivateNamesMap;
+    exports2.buildPrivateNamesNodes = buildPrivateNamesNodes;
+    exports2.privateNameVisitorFactory = privateNameVisitorFactory;
+    exports2.transformPrivateNamesUsage = transformPrivateNamesUsage;
     var _core = require_lib27();
     var _traverse = require_lib9();
     var _helperReplaceSupers = require_lib19();
@@ -62727,14 +66420,14 @@ var require_fields = __commonJS({
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/misc.js
 var require_misc2 = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/misc.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/misc.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.extractComputedKeys = extractComputedKeys;
-    exports.injectInitialization = injectInitialization;
-    exports.memoiseComputedKey = memoiseComputedKey;
+    exports2.extractComputedKeys = extractComputedKeys;
+    exports2.injectInitialization = injectInitialization;
+    exports2.memoiseComputedKey = memoiseComputedKey;
     var _core = require_lib27();
     var _traverse = require_lib9();
     var findBareSupers = _traverse.visitors.environmentVisitor({
@@ -62868,14 +66561,14 @@ var require_misc2 = __commonJS({
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/decorators.js
 var require_decorators = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/decorators.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/decorators.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = _default3;
-    exports.hasDecorators = hasDecorators;
-    exports.hasOwnDecorators = hasOwnDecorators;
+    exports2.default = _default3;
+    exports2.hasDecorators = hasDecorators;
+    exports2.hasOwnDecorators = hasOwnDecorators;
     var _core = require_lib27();
     var _helperReplaceSupers = require_lib19();
     var _helperSkipTransparentExpressionWrappers = require_lib21();
@@ -64202,12 +67895,12 @@ var require_decorators = __commonJS({
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/decorators-2018-09.js
 var require_decorators_2018_09 = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/decorators-2018-09.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/decorators-2018-09.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.buildDecoratedClass = buildDecoratedClass;
+    exports2.buildDecoratedClass = buildDecoratedClass;
     var _core = require_lib27();
     var _helperReplaceSupers = require_lib19();
     function prop(key, value2) {
@@ -64333,17 +68026,17 @@ var require_decorators_2018_09 = __commonJS({
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/features.js
 var require_features = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/features.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/features.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.FEATURES = void 0;
-    exports.enableFeature = enableFeature;
-    exports.isLoose = isLoose;
-    exports.shouldTransform = shouldTransform;
+    exports2.FEATURES = void 0;
+    exports2.enableFeature = enableFeature;
+    exports2.isLoose = isLoose;
+    exports2.shouldTransform = shouldTransform;
     var _decorators = require_decorators();
-    var FEATURES = exports.FEATURES = Object.freeze({
+    var FEATURES = exports2.FEATURES = Object.freeze({
       fields: 1 << 1,
       privateMethods: 1 << 2,
       decorators: 1 << 3,
@@ -64492,31 +68185,31 @@ See https://babeljs.io/docs/configuration#print-effective-configs for more info.
 
 // node_modules/@babel/helper-create-class-features-plugin/lib/index.js
 var require_lib22 = __commonJS({
-  "node_modules/@babel/helper-create-class-features-plugin/lib/index.js"(exports) {
+  "node_modules/@babel/helper-create-class-features-plugin/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "FEATURES", {
+    Object.defineProperty(exports2, "FEATURES", {
       enumerable: true,
       get: function() {
         return _features.FEATURES;
       }
     });
-    Object.defineProperty(exports, "buildCheckInRHS", {
+    Object.defineProperty(exports2, "buildCheckInRHS", {
       enumerable: true,
       get: function() {
         return _fields.buildCheckInRHS;
       }
     });
-    exports.createClassFeaturePlugin = createClassFeaturePlugin;
-    Object.defineProperty(exports, "enableFeature", {
+    exports2.createClassFeaturePlugin = createClassFeaturePlugin;
+    Object.defineProperty(exports2, "enableFeature", {
       enumerable: true,
       get: function() {
         return _features.enableFeature;
       }
     });
-    Object.defineProperty(exports, "injectInitialization", {
+    Object.defineProperty(exports2, "injectInitialization", {
       enumerable: true,
       get: function() {
         return _misc.injectInitialization;
@@ -64755,16 +68448,16 @@ var require_lib22 = __commonJS({
 
 // node_modules/@babel/plugin-transform-typescript/lib/enum.js
 var require_enum = __commonJS({
-  "node_modules/@babel/plugin-transform-typescript/lib/enum.js"(exports) {
+  "node_modules/@babel/plugin-transform-typescript/lib/enum.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = transpileEnum;
-    exports.isSyntacticallyString = isSyntacticallyString;
-    exports.translateEnumValues = translateEnumValues;
+    exports2.default = transpileEnum;
+    exports2.isSyntacticallyString = isSyntacticallyString;
+    exports2.translateEnumValues = translateEnumValues;
     var _core = require_lib27();
-    var _assert = __require("assert");
+    var _assert = require("assert");
     var _helperAnnotateAsPure = require_lib20();
     var _helperSkipTransparentExpressionWrappers = require_lib21();
     var ENUMS = /* @__PURE__ */ new WeakMap();
@@ -65093,15 +68786,15 @@ var require_enum = __commonJS({
 
 // node_modules/@babel/plugin-transform-typescript/lib/const-enum.js
 var require_const_enum = __commonJS({
-  "node_modules/@babel/plugin-transform-typescript/lib/const-enum.js"(exports) {
+  "node_modules/@babel/plugin-transform-typescript/lib/const-enum.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.EXPORTED_CONST_ENUMS_IN_NAMESPACE = void 0;
-    exports.default = transpileConstEnum;
+    exports2.EXPORTED_CONST_ENUMS_IN_NAMESPACE = void 0;
+    exports2.default = transpileConstEnum;
     var _enum3 = require_enum();
-    var EXPORTED_CONST_ENUMS_IN_NAMESPACE = exports.EXPORTED_CONST_ENUMS_IN_NAMESPACE = /* @__PURE__ */ new WeakSet();
+    var EXPORTED_CONST_ENUMS_IN_NAMESPACE = exports2.EXPORTED_CONST_ENUMS_IN_NAMESPACE = /* @__PURE__ */ new WeakSet();
     function transpileConstEnum(path3, t) {
       const {
         name
@@ -65159,15 +68852,15 @@ var require_const_enum = __commonJS({
 
 // node_modules/@babel/plugin-transform-typescript/lib/global-types.js
 var require_global_types = __commonJS({
-  "node_modules/@babel/plugin-transform-typescript/lib/global-types.js"(exports) {
+  "node_modules/@babel/plugin-transform-typescript/lib/global-types.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.GLOBAL_TYPES = void 0;
-    exports.isGlobalType = isGlobalType;
-    exports.registerGlobalType = registerGlobalType;
-    var GLOBAL_TYPES = exports.GLOBAL_TYPES = /* @__PURE__ */ new WeakMap();
+    exports2.GLOBAL_TYPES = void 0;
+    exports2.isGlobalType = isGlobalType;
+    exports2.registerGlobalType = registerGlobalType;
+    var GLOBAL_TYPES = exports2.GLOBAL_TYPES = /* @__PURE__ */ new WeakMap();
     function isGlobalType({
       scope
     }, name) {
@@ -65193,13 +68886,13 @@ This problem is likely caused by another plugin injecting
 
 // node_modules/@babel/plugin-transform-typescript/lib/namespace.js
 var require_namespace = __commonJS({
-  "node_modules/@babel/plugin-transform-typescript/lib/namespace.js"(exports) {
+  "node_modules/@babel/plugin-transform-typescript/lib/namespace.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = transpileNamespace;
-    exports.getFirstIdentifier = getFirstIdentifier;
+    exports2.default = transpileNamespace;
+    exports2.getFirstIdentifier = getFirstIdentifier;
     var _core = require_lib27();
     var _globalTypes = require_global_types();
     var _constEnum = require_const_enum();
@@ -65370,12 +69063,12 @@ var require_namespace = __commonJS({
 
 // node_modules/@babel/plugin-transform-typescript/lib/index.js
 var require_lib23 = __commonJS({
-  "node_modules/@babel/plugin-transform-typescript/lib/index.js"(exports) {
+  "node_modules/@babel/plugin-transform-typescript/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _helperPluginUtils = require_lib15();
     var _pluginSyntaxTypescript = require_lib16();
     var _helperCreateClassFeaturesPlugin = require_lib22();
@@ -65418,7 +69111,7 @@ var require_lib23 = __commonJS({
 Please consider using \`${suggestion}\`${extra}, or add @babel/plugin-transform-modules-commonjs to your Babel config.`);
       }
     }
-    var _default3 = exports.default = (0, _helperPluginUtils.declare)((api, opts) => {
+    var _default3 = exports2.default = (0, _helperPluginUtils.declare)((api, opts) => {
       const {
         types: t,
         template
@@ -65912,14 +69605,14 @@ Please consider using \`${suggestion}\`${extra}, or add @babel/plugin-transform-
 
 // node_modules/@babel/plugin-syntax-jsx/lib/index.js
 var require_lib24 = __commonJS({
-  "node_modules/@babel/plugin-syntax-jsx/lib/index.js"(exports) {
+  "node_modules/@babel/plugin-syntax-jsx/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
+    exports2.default = void 0;
     var _helperPluginUtils = require_lib15();
-    var _default3 = exports.default = (0, _helperPluginUtils.declare)((api) => {
+    var _default3 = exports2.default = (0, _helperPluginUtils.declare)((api) => {
       api.assertVersion(7);
       return {
         name: "syntax-jsx",
@@ -65938,12 +69631,12 @@ var require_lib24 = __commonJS({
 
 // node_modules/@babel/plugin-transform-modules-commonjs/lib/dynamic-import.js
 var require_dynamic_import2 = __commonJS({
-  "node_modules/@babel/plugin-transform-modules-commonjs/lib/dynamic-import.js"(exports) {
+  "node_modules/@babel/plugin-transform-modules-commonjs/lib/dynamic-import.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.transformDynamicImport = transformDynamicImport;
+    exports2.transformDynamicImport = transformDynamicImport;
     var _core = require_lib27();
     var _helperModuleTransforms = require_lib11();
     var requireNoInterop = (source) => _core.template.expression.ast`require(${source})`;
@@ -65957,12 +69650,12 @@ var require_dynamic_import2 = __commonJS({
 
 // node_modules/@babel/plugin-transform-modules-commonjs/lib/lazy.js
 var require_lazy = __commonJS({
-  "node_modules/@babel/plugin-transform-modules-commonjs/lib/lazy.js"(exports) {
+  "node_modules/@babel/plugin-transform-modules-commonjs/lib/lazy.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.lazyImportsHook = void 0;
+    exports2.lazyImportsHook = void 0;
     var _core = require_lib27();
     var _helperModuleTransforms = require_lib11();
     var lazyImportsHook = (lazy2) => ({
@@ -66000,19 +69693,19 @@ var require_lazy = __commonJS({
           return _core.types.callExpression(ref, []);
       }
     });
-    exports.lazyImportsHook = lazyImportsHook;
+    exports2.lazyImportsHook = lazyImportsHook;
   }
 });
 
 // node_modules/@babel/plugin-transform-modules-commonjs/lib/hooks.js
 var require_hooks = __commonJS({
-  "node_modules/@babel/plugin-transform-modules-commonjs/lib/hooks.js"(exports) {
+  "node_modules/@babel/plugin-transform-modules-commonjs/lib/hooks.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.defineCommonJSHook = defineCommonJSHook;
-    exports.makeInvokers = makeInvokers;
+    exports2.defineCommonJSHook = defineCommonJSHook;
+    exports2.makeInvokers = makeInvokers;
     var commonJSHooksKey = "@babel/plugin-transform-modules-commonjs/customWrapperPlugin";
     function defineCommonJSHook(file2, hook) {
       let hooks = file2.get(commonJSHooksKey);
@@ -66048,13 +69741,13 @@ var require_hooks = __commonJS({
 
 // node_modules/@babel/plugin-transform-modules-commonjs/lib/index.js
 var require_lib25 = __commonJS({
-  "node_modules/@babel/plugin-transform-modules-commonjs/lib/index.js"(exports) {
+  "node_modules/@babel/plugin-transform-modules-commonjs/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = void 0;
-    Object.defineProperty(exports, "defineCommonJSHook", {
+    exports2.default = void 0;
+    Object.defineProperty(exports2, "defineCommonJSHook", {
       enumerable: true,
       get: function() {
         return _hooks.defineCommonJSHook;
@@ -66066,7 +69759,7 @@ var require_lib25 = __commonJS({
     var _dynamicImport = require_dynamic_import2();
     var _lazy2 = require_lazy();
     var _hooks = require_hooks();
-    var _default3 = exports.default = (0, _helperPluginUtils.declare)((api, options) => {
+    var _default3 = exports2.default = (0, _helperPluginUtils.declare)((api, options) => {
       var _api$assumption, _api$assumption2, _api$assumption3;
       api.assertVersion(7);
       const {
@@ -66259,9 +69952,9 @@ var require_lib25 = __commonJS({
 
 // node_modules/@babel/preset-typescript/lib/index.js
 var require_lib26 = __commonJS({
-  "node_modules/@babel/preset-typescript/lib/index.js"(exports) {
+  "node_modules/@babel/preset-typescript/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
+    Object.defineProperty(exports2, "__esModule", { value: true });
     var helperPluginUtils = require_lib15();
     var transformTypeScript = require_lib23();
     require_lib24();
@@ -66420,35 +70113,35 @@ var require_lib26 = __commonJS({
         }]
       };
     });
-    exports.default = index;
+    exports2.default = index;
   }
 });
 
 // node_modules/@babel/core/lib/config/files/module-types.js
 var require_module_types = __commonJS({
-  "node_modules/@babel/core/lib/config/files/module-types.js"(exports) {
+  "node_modules/@babel/core/lib/config/files/module-types.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.default = loadCodeDefault;
-    exports.supportsESM = void 0;
+    exports2.default = loadCodeDefault;
+    exports2.supportsESM = void 0;
     var _async = require_async();
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
       return data;
     }
     function _url2() {
-      const data = __require("url");
+      const data = require("url");
       _url2 = function() {
         return data;
       };
       return data;
     }
-    __require("module");
+    require("module");
     function _semver() {
       const data = require_semver();
       _semver = function() {
@@ -66497,22 +70190,22 @@ var require_module_types = __commonJS({
       }
     }
     var import_;
-    var supportsESM = exports.supportsESM = _semver().satisfies(process.versions.node, "^12.17 || >=13.2");
+    var supportsESM = exports2.supportsESM = _semver().satisfies(process.versions.node, "^12.17 || >=13.2");
     var LOADING_CJS_FILES = /* @__PURE__ */ new Set();
     function loadCjsDefault(filepath) {
       if (LOADING_CJS_FILES.has(filepath)) {
         debug("Auto-ignoring usage of config %o.", filepath);
         return {};
       }
-      let module2;
+      let module3;
       try {
         LOADING_CJS_FILES.add(filepath);
-        module2 = (0, _rewriteStackTrace.endHiddenCallStack)(__require)(filepath);
+        module3 = (0, _rewriteStackTrace.endHiddenCallStack)(require)(filepath);
       } finally {
         LOADING_CJS_FILES.delete(filepath);
       }
       {
-        return module2 != null && (module2.__esModule || module2[Symbol.toStringTag] === "Module") ? module2.default || (arguments[1] ? module2 : void 0) : module2;
+        return module3 != null && (module3.__esModule || module3[Symbol.toStringTag] === "Module") ? module3.default || (arguments[1] ? module3 : void 0) : module3;
       }
     }
     var loadMjsFromPath = (0, _rewriteStackTrace.endHiddenCallStack)(function() {
@@ -66584,7 +70277,7 @@ var require_module_types = __commonJS({
       }
     }
     function ensureTsSupport(filepath, ext, callback) {
-      if (__require.extensions[".ts"] || __require.extensions[".cts"] || __require.extensions[".mts"]) {
+      if (require.extensions[".ts"] || require.extensions[".cts"] || require.extensions[".mts"]) {
         return callback();
       }
       if (ext !== ".cts") {
@@ -66620,14 +70313,14 @@ var require_module_types = __commonJS({
             throw error35;
           }
         }
-        return __require.extensions[".js"](m, filename);
+        return require.extensions[".js"](m, filename);
       };
-      __require.extensions[ext] = handler;
+      require.extensions[ext] = handler;
       try {
         return callback();
       } finally {
-        if (__require.extensions[ext] === handler)
-          delete __require.extensions[ext];
+        if (require.extensions[ext] === handler)
+          delete require.extensions[ext];
         handler = void 0;
       }
     }
@@ -66658,17 +70351,17 @@ packageExtensions:
 
 // node_modules/@babel/core/lib/config/files/configuration.js
 var require_configuration = __commonJS({
-  "node_modules/@babel/core/lib/config/files/configuration.js"(exports) {
+  "node_modules/@babel/core/lib/config/files/configuration.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.ROOT_CONFIG_FILENAMES = void 0;
-    exports.findConfigUpwards = findConfigUpwards;
-    exports.findRelativeConfig = findRelativeConfig;
-    exports.findRootConfig = findRootConfig;
-    exports.loadConfig = loadConfig;
-    exports.resolveShowConfigPath = resolveShowConfigPath;
+    exports2.ROOT_CONFIG_FILENAMES = void 0;
+    exports2.findConfigUpwards = findConfigUpwards;
+    exports2.findRelativeConfig = findRelativeConfig;
+    exports2.findRootConfig = findRootConfig;
+    exports2.loadConfig = loadConfig;
+    exports2.resolveShowConfigPath = resolveShowConfigPath;
     function _debug() {
       const data = require_src();
       _debug = function() {
@@ -66677,14 +70370,14 @@ var require_configuration = __commonJS({
       return data;
     }
     function _fs() {
-      const data = __require("fs");
+      const data = require("fs");
       _fs = function() {
         return data;
       };
       return data;
     }
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -66711,11 +70404,11 @@ var require_configuration = __commonJS({
     var _patternToRegex = require_pattern_to_regex();
     var _configError = require_config_error();
     var fs2 = require_fs();
-    __require("module");
+    require("module");
     var _rewriteStackTrace = require_rewrite_stack_trace();
     var _async = require_async();
     var debug = _debug()("babel:config:loading:files:configuration");
-    var ROOT_CONFIG_FILENAMES = exports.ROOT_CONFIG_FILENAMES = ["babel.config.js", "babel.config.cjs", "babel.config.mjs", "babel.config.json", "babel.config.cts"];
+    var ROOT_CONFIG_FILENAMES = exports2.ROOT_CONFIG_FILENAMES = ["babel.config.js", "babel.config.cjs", "babel.config.mjs", "babel.config.json", "babel.config.cts"];
     var RELATIVE_CONFIG_FILENAMES = [".babelrc", ".babelrc.js", ".babelrc.cjs", ".babelrc.mjs", ".babelrc.json", ".babelrc.cts"];
     var BABELIGNORE_FILENAME = ".babelignore";
     var runConfig = (0, _caching.makeWeakCache)(function* runConfig2(options, cache) {
@@ -66871,9 +70564,9 @@ from ${dirname2}`);
       return config2;
     }
     function* loadConfig(name, dirname2, envName, caller) {
-      const filepath = (((v, w) => (v = v.split("."), w = w.split("."), +v[0] > +w[0] || v[0] == w[0] && +v[1] >= +w[1]))(process.versions.node, "8.9") ? __require.resolve : (r, {
+      const filepath = (((v, w) => (v = v.split("."), w = w.split("."), +v[0] > +w[0] || v[0] == w[0] && +v[1] >= +w[1]))(process.versions.node, "8.9") ? require.resolve : (r, {
         paths: [b]
-      }, M = __require("module")) => {
+      }, M = require("module")) => {
         let f = M._findPath(r, M._nodeModulePaths(b).concat(b));
         if (f)
           return f;
@@ -66959,64 +70652,64 @@ module.exports = function(api) {
 
 // node_modules/@babel/core/lib/vendor/import-meta-resolve.js
 var require_import_meta_resolve = __commonJS({
-  "node_modules/@babel/core/lib/vendor/import-meta-resolve.js"(exports) {
+  "node_modules/@babel/core/lib/vendor/import-meta-resolve.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.moduleResolve = moduleResolve;
-    exports.resolve = resolve;
+    exports2.moduleResolve = moduleResolve;
+    exports2.resolve = resolve;
     function _assert() {
-      const data = __require("assert");
+      const data = require("assert");
       _assert = function() {
         return data;
       };
       return data;
     }
     function _fs() {
-      const data = _interopRequireWildcard(__require("fs"), true);
+      const data = _interopRequireWildcard(require("fs"), true);
       _fs = function() {
         return data;
       };
       return data;
     }
     function _process() {
-      const data = __require("process");
+      const data = require("process");
       _process = function() {
         return data;
       };
       return data;
     }
     function _url2() {
-      const data = __require("url");
+      const data = require("url");
       _url2 = function() {
         return data;
       };
       return data;
     }
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
       return data;
     }
     function _module() {
-      const data = __require("module");
+      const data = require("module");
       _module = function() {
         return data;
       };
       return data;
     }
     function _v() {
-      const data = __require("v8");
+      const data = require("v8");
       _v = function() {
         return data;
       };
       return data;
     }
     function _util() {
-      const data = __require("util");
+      const data = require("util");
       _util = function() {
         return data;
       };
@@ -67717,12 +71410,12 @@ Default "index" lookups for the main are deprecated for ES modules.`, "Deprecati
       }
       throw invalidPackageTarget(packageSubpath, target, packageJsonUrl, internal, base);
     }
-    function isConditionalExportsMainSugar(exports2, packageJsonUrl, base) {
-      if (typeof exports2 === "string" || Array.isArray(exports2))
+    function isConditionalExportsMainSugar(exports3, packageJsonUrl, base) {
+      if (typeof exports3 === "string" || Array.isArray(exports3))
         return true;
-      if (typeof exports2 !== "object" || exports2 === null)
+      if (typeof exports3 !== "object" || exports3 === null)
         return false;
-      const keys = Object.getOwnPropertyNames(exports2);
+      const keys = Object.getOwnPropertyNames(exports3);
       let isConditionalSugar = false;
       let i = 0;
       let keyIndex = -1;
@@ -67748,14 +71441,14 @@ Default "index" lookups for the main are deprecated for ES modules.`, "Deprecati
       _process().emitWarning(`Use of deprecated trailing slash pattern mapping "${match}" in the "exports" field module resolution of the package at ${pjsonPath}${base ? ` imported from ${(0, _url2().fileURLToPath)(base)}` : ""}. Mapping specifiers ending in "/" is no longer supported.`, "DeprecationWarning", "DEP0155");
     }
     function packageExportsResolve(packageJsonUrl, packageSubpath, packageConfig, base, conditions) {
-      let exports2 = packageConfig.exports;
-      if (isConditionalExportsMainSugar(exports2, packageJsonUrl, base)) {
-        exports2 = {
-          ".": exports2
+      let exports3 = packageConfig.exports;
+      if (isConditionalExportsMainSugar(exports3, packageJsonUrl, base)) {
+        exports3 = {
+          ".": exports3
         };
       }
-      if (own.call(exports2, packageSubpath) && !packageSubpath.includes("*") && !packageSubpath.endsWith("/")) {
-        const target = exports2[packageSubpath];
+      if (own.call(exports3, packageSubpath) && !packageSubpath.includes("*") && !packageSubpath.endsWith("/")) {
+        const target = exports3[packageSubpath];
         const resolveResult = resolvePackageTarget(packageJsonUrl, target, "", packageSubpath, base, false, false, false, conditions);
         if (resolveResult === null || resolveResult === void 0) {
           throw exportsNotFound(packageSubpath, packageJsonUrl, base);
@@ -67764,7 +71457,7 @@ Default "index" lookups for the main are deprecated for ES modules.`, "Deprecati
       }
       let bestMatch = "";
       let bestMatchSubpath = "";
-      const keys = Object.getOwnPropertyNames(exports2);
+      const keys = Object.getOwnPropertyNames(exports3);
       let i = -1;
       while (++i < keys.length) {
         const key = keys[i];
@@ -67781,7 +71474,7 @@ Default "index" lookups for the main are deprecated for ES modules.`, "Deprecati
         }
       }
       if (bestMatch) {
-        const target = exports2[bestMatch];
+        const target = exports3[bestMatch];
         const resolveResult = resolvePackageTarget(packageJsonUrl, target, bestMatchSubpath, bestMatch, base, true, false, packageSubpath.endsWith("/"), conditions);
         if (resolveResult === null || resolveResult === void 0) {
           throw exportsNotFound(packageSubpath, packageJsonUrl, base);
@@ -68072,14 +71765,14 @@ Default "index" lookups for the main are deprecated for ES modules.`, "Deprecati
 
 // node_modules/@babel/core/lib/config/files/plugins.js
 var require_plugins4 = __commonJS({
-  "node_modules/@babel/core/lib/config/files/plugins.js"(exports) {
+  "node_modules/@babel/core/lib/config/files/plugins.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.loadPlugin = loadPlugin2;
-    exports.loadPreset = loadPreset;
-    exports.resolvePreset = exports.resolvePlugin = void 0;
+    exports2.loadPlugin = loadPlugin2;
+    exports2.loadPreset = loadPreset;
+    exports2.resolvePreset = exports2.resolvePlugin = void 0;
     function _debug() {
       const data = require_src();
       _debug = function() {
@@ -68088,7 +71781,7 @@ var require_plugins4 = __commonJS({
       return data;
     }
     function _path() {
-      const data = __require("path");
+      const data = require("path");
       _path = function() {
         return data;
       };
@@ -68097,16 +71790,16 @@ var require_plugins4 = __commonJS({
     var _async = require_async();
     var _moduleTypes = require_module_types();
     function _url2() {
-      const data = __require("url");
+      const data = require("url");
       _url2 = function() {
         return data;
       };
       return data;
     }
     var _importMetaResolve = require_import_meta_resolve();
-    __require("module");
+    require("module");
     function _fs() {
-      const data = __require("fs");
+      const data = require("fs");
       _fs = function() {
         return data;
       };
@@ -68121,8 +71814,8 @@ var require_plugins4 = __commonJS({
     var OTHER_PLUGIN_ORG_RE = /^(@(?!babel\/)[^/]+\/)(?![^/]*babel-plugin(?:-|\/|$)|[^/]+\/)/;
     var OTHER_PRESET_ORG_RE = /^(@(?!babel\/)[^/]+\/)(?![^/]*babel-preset(?:-|\/|$)|[^/]+\/)/;
     var OTHER_ORG_DEFAULT_RE = /^(@(?!babel$)[^/]+)$/;
-    var resolvePlugin = exports.resolvePlugin = resolveStandardizedName.bind(null, "plugin");
-    var resolvePreset = exports.resolvePreset = resolveStandardizedName.bind(null, "preset");
+    var resolvePlugin = exports2.resolvePlugin = resolveStandardizedName.bind(null, "plugin");
+    var resolvePreset = exports2.resolvePreset = resolveStandardizedName.bind(null, "preset");
     function* loadPlugin2(name, dirname2) {
       const {
         filepath,
@@ -68199,9 +71892,9 @@ to your top-level package.json.
         if (dirname2) {
           return {
             error: null,
-            value: (((v, w) => (v = v.split("."), w = w.split("."), +v[0] > +w[0] || v[0] == w[0] && +v[1] >= +w[1]))(process.versions.node, "8.9") ? __require.resolve : (r, {
+            value: (((v, w) => (v = v.split("."), w = w.split("."), +v[0] > +w[0] || v[0] == w[0] && +v[1] >= +w[1]))(process.versions.node, "8.9") ? require.resolve : (r, {
               paths: [b]
-            }, M = __require("module")) => {
+            }, M = require("module")) => {
               let f = M._findPath(r, M._nodeModulePaths(b).concat(b));
               if (f)
                 return f;
@@ -68215,7 +71908,7 @@ to your top-level package.json.
         } else {
           return {
             error: null,
-            value: __require.resolve(id)
+            value: require.resolve(id)
           };
         }
       } catch (error35) {
@@ -68316,72 +72009,72 @@ to your top-level package.json.
 
 // node_modules/@babel/core/lib/config/files/index.js
 var require_files = __commonJS({
-  "node_modules/@babel/core/lib/config/files/index.js"(exports) {
+  "node_modules/@babel/core/lib/config/files/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    Object.defineProperty(exports, "ROOT_CONFIG_FILENAMES", {
+    Object.defineProperty(exports2, "ROOT_CONFIG_FILENAMES", {
       enumerable: true,
       get: function() {
         return _configuration.ROOT_CONFIG_FILENAMES;
       }
     });
-    Object.defineProperty(exports, "findConfigUpwards", {
+    Object.defineProperty(exports2, "findConfigUpwards", {
       enumerable: true,
       get: function() {
         return _configuration.findConfigUpwards;
       }
     });
-    Object.defineProperty(exports, "findPackageData", {
+    Object.defineProperty(exports2, "findPackageData", {
       enumerable: true,
       get: function() {
         return _package.findPackageData;
       }
     });
-    Object.defineProperty(exports, "findRelativeConfig", {
+    Object.defineProperty(exports2, "findRelativeConfig", {
       enumerable: true,
       get: function() {
         return _configuration.findRelativeConfig;
       }
     });
-    Object.defineProperty(exports, "findRootConfig", {
+    Object.defineProperty(exports2, "findRootConfig", {
       enumerable: true,
       get: function() {
         return _configuration.findRootConfig;
       }
     });
-    Object.defineProperty(exports, "loadConfig", {
+    Object.defineProperty(exports2, "loadConfig", {
       enumerable: true,
       get: function() {
         return _configuration.loadConfig;
       }
     });
-    Object.defineProperty(exports, "loadPlugin", {
+    Object.defineProperty(exports2, "loadPlugin", {
       enumerable: true,
       get: function() {
         return _plugins.loadPlugin;
       }
     });
-    Object.defineProperty(exports, "loadPreset", {
+    Object.defineProperty(exports2, "loadPreset", {
       enumerable: true,
       get: function() {
         return _plugins.loadPreset;
       }
     });
-    Object.defineProperty(exports, "resolvePlugin", {
+    Object.defineProperty(exports2, "resolvePlugin", {
       enumerable: true,
       get: function() {
         return _plugins.resolvePlugin;
       }
     });
-    Object.defineProperty(exports, "resolvePreset", {
+    Object.defineProperty(exports2, "resolvePreset", {
       enumerable: true,
       get: function() {
         return _plugins.resolvePreset;
       }
     });
-    Object.defineProperty(exports, "resolveShowConfigPath", {
+    Object.defineProperty(exports2, "resolveShowConfigPath", {
       enumerable: true,
       get: function() {
         return _configuration.resolveShowConfigPath;
@@ -68395,14 +72088,14 @@ var require_files = __commonJS({
 
 // node_modules/@babel/core/lib/transform.js
 var require_transform = __commonJS({
-  "node_modules/@babel/core/lib/transform.js"(exports) {
+  "node_modules/@babel/core/lib/transform.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.transform = void 0;
-    exports.transformAsync = transformAsync;
-    exports.transformSync = transformSync;
+    exports2.transform = void 0;
+    exports2.transformAsync = transformAsync;
+    exports2.transformSync = transformSync;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -68419,7 +72112,7 @@ var require_transform = __commonJS({
         return null;
       return yield* (0, _index2.run)(config2, code);
     });
-    var transform2 = exports.transform = function transform3(code, optsOrCallback, maybeCallback) {
+    var transform2 = exports2.transform = function transform3(code, optsOrCallback, maybeCallback) {
       let opts;
       let callback;
       if (typeof optsOrCallback === "function") {
@@ -68447,14 +72140,14 @@ var require_transform = __commonJS({
 
 // node_modules/@babel/core/lib/transform-ast.js
 var require_transform_ast = __commonJS({
-  "node_modules/@babel/core/lib/transform-ast.js"(exports) {
+  "node_modules/@babel/core/lib/transform-ast.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.transformFromAst = void 0;
-    exports.transformFromAstAsync = transformFromAstAsync;
-    exports.transformFromAstSync = transformFromAstSync;
+    exports2.transformFromAst = void 0;
+    exports2.transformFromAstAsync = transformFromAstAsync;
+    exports2.transformFromAstSync = transformFromAstSync;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -68473,7 +72166,7 @@ var require_transform_ast = __commonJS({
         throw new Error("No AST given");
       return yield* (0, _index2.run)(config2, code, ast);
     });
-    var transformFromAst = exports.transformFromAst = function transformFromAst2(ast, code, optsOrCallback, maybeCallback) {
+    var transformFromAst = exports2.transformFromAst = function transformFromAst2(ast, code, optsOrCallback, maybeCallback) {
       let opts;
       let callback;
       if (typeof optsOrCallback === "function") {
@@ -68501,14 +72194,14 @@ var require_transform_ast = __commonJS({
 
 // node_modules/@babel/core/lib/parse.js
 var require_parse4 = __commonJS({
-  "node_modules/@babel/core/lib/parse.js"(exports) {
+  "node_modules/@babel/core/lib/parse.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.parse = void 0;
-    exports.parseAsync = parseAsync3;
-    exports.parseSync = parseSync;
+    exports2.parse = void 0;
+    exports2.parseAsync = parseAsync3;
+    exports2.parseSync = parseSync;
     function _gensync() {
       const data = require_gensync();
       _gensync = function() {
@@ -68527,7 +72220,7 @@ var require_parse4 = __commonJS({
       }
       return yield* (0, _index2.default)(config2.passes, (0, _normalizeOpts.default)(config2), code);
     });
-    var parse3 = exports.parse = function parse4(code, opts, callback) {
+    var parse3 = exports2.parse = function parse4(code, opts, callback) {
       if (typeof opts === "function") {
         callback = opts;
         opts = void 0;
@@ -68550,176 +72243,176 @@ var require_parse4 = __commonJS({
 
 // node_modules/@babel/core/lib/index.js
 var require_lib27 = __commonJS({
-  "node_modules/@babel/core/lib/index.js"(exports) {
+  "node_modules/@babel/core/lib/index.js"(exports2) {
     "use strict";
-    Object.defineProperty(exports, "__esModule", {
+    Object.defineProperty(exports2, "__esModule", {
       value: true
     });
-    exports.DEFAULT_EXTENSIONS = void 0;
-    Object.defineProperty(exports, "File", {
+    exports2.DEFAULT_EXTENSIONS = void 0;
+    Object.defineProperty(exports2, "File", {
       enumerable: true,
       get: function() {
         return _file2.default;
       }
     });
-    Object.defineProperty(exports, "buildExternalHelpers", {
+    Object.defineProperty(exports2, "buildExternalHelpers", {
       enumerable: true,
       get: function() {
         return _buildExternalHelpers.default;
       }
     });
-    Object.defineProperty(exports, "createConfigItem", {
+    Object.defineProperty(exports2, "createConfigItem", {
       enumerable: true,
       get: function() {
         return _index2.createConfigItem;
       }
     });
-    Object.defineProperty(exports, "createConfigItemAsync", {
+    Object.defineProperty(exports2, "createConfigItemAsync", {
       enumerable: true,
       get: function() {
         return _index2.createConfigItemAsync;
       }
     });
-    Object.defineProperty(exports, "createConfigItemSync", {
+    Object.defineProperty(exports2, "createConfigItemSync", {
       enumerable: true,
       get: function() {
         return _index2.createConfigItemSync;
       }
     });
-    Object.defineProperty(exports, "getEnv", {
+    Object.defineProperty(exports2, "getEnv", {
       enumerable: true,
       get: function() {
         return _environment.getEnv;
       }
     });
-    Object.defineProperty(exports, "loadOptions", {
+    Object.defineProperty(exports2, "loadOptions", {
       enumerable: true,
       get: function() {
         return _index2.loadOptions;
       }
     });
-    Object.defineProperty(exports, "loadOptionsAsync", {
+    Object.defineProperty(exports2, "loadOptionsAsync", {
       enumerable: true,
       get: function() {
         return _index2.loadOptionsAsync;
       }
     });
-    Object.defineProperty(exports, "loadOptionsSync", {
+    Object.defineProperty(exports2, "loadOptionsSync", {
       enumerable: true,
       get: function() {
         return _index2.loadOptionsSync;
       }
     });
-    Object.defineProperty(exports, "loadPartialConfig", {
+    Object.defineProperty(exports2, "loadPartialConfig", {
       enumerable: true,
       get: function() {
         return _index2.loadPartialConfig;
       }
     });
-    Object.defineProperty(exports, "loadPartialConfigAsync", {
+    Object.defineProperty(exports2, "loadPartialConfigAsync", {
       enumerable: true,
       get: function() {
         return _index2.loadPartialConfigAsync;
       }
     });
-    Object.defineProperty(exports, "loadPartialConfigSync", {
+    Object.defineProperty(exports2, "loadPartialConfigSync", {
       enumerable: true,
       get: function() {
         return _index2.loadPartialConfigSync;
       }
     });
-    Object.defineProperty(exports, "parse", {
+    Object.defineProperty(exports2, "parse", {
       enumerable: true,
       get: function() {
         return _parse2.parse;
       }
     });
-    Object.defineProperty(exports, "parseAsync", {
+    Object.defineProperty(exports2, "parseAsync", {
       enumerable: true,
       get: function() {
         return _parse2.parseAsync;
       }
     });
-    Object.defineProperty(exports, "parseSync", {
+    Object.defineProperty(exports2, "parseSync", {
       enumerable: true,
       get: function() {
         return _parse2.parseSync;
       }
     });
-    exports.resolvePreset = exports.resolvePlugin = void 0;
-    Object.defineProperty((0, exports), "template", {
+    exports2.resolvePreset = exports2.resolvePlugin = void 0;
+    Object.defineProperty((0, exports2), "template", {
       enumerable: true,
       get: function() {
         return _template().default;
       }
     });
-    Object.defineProperty((0, exports), "tokTypes", {
+    Object.defineProperty((0, exports2), "tokTypes", {
       enumerable: true,
       get: function() {
         return _parser().tokTypes;
       }
     });
-    Object.defineProperty(exports, "transform", {
+    Object.defineProperty(exports2, "transform", {
       enumerable: true,
       get: function() {
         return _transform2.transform;
       }
     });
-    Object.defineProperty(exports, "transformAsync", {
+    Object.defineProperty(exports2, "transformAsync", {
       enumerable: true,
       get: function() {
         return _transform2.transformAsync;
       }
     });
-    Object.defineProperty(exports, "transformFile", {
+    Object.defineProperty(exports2, "transformFile", {
       enumerable: true,
       get: function() {
         return _transformFile.transformFile;
       }
     });
-    Object.defineProperty(exports, "transformFileAsync", {
+    Object.defineProperty(exports2, "transformFileAsync", {
       enumerable: true,
       get: function() {
         return _transformFile.transformFileAsync;
       }
     });
-    Object.defineProperty(exports, "transformFileSync", {
+    Object.defineProperty(exports2, "transformFileSync", {
       enumerable: true,
       get: function() {
         return _transformFile.transformFileSync;
       }
     });
-    Object.defineProperty(exports, "transformFromAst", {
+    Object.defineProperty(exports2, "transformFromAst", {
       enumerable: true,
       get: function() {
         return _transformAst.transformFromAst;
       }
     });
-    Object.defineProperty(exports, "transformFromAstAsync", {
+    Object.defineProperty(exports2, "transformFromAstAsync", {
       enumerable: true,
       get: function() {
         return _transformAst.transformFromAstAsync;
       }
     });
-    Object.defineProperty(exports, "transformFromAstSync", {
+    Object.defineProperty(exports2, "transformFromAstSync", {
       enumerable: true,
       get: function() {
         return _transformAst.transformFromAstSync;
       }
     });
-    Object.defineProperty(exports, "transformSync", {
+    Object.defineProperty(exports2, "transformSync", {
       enumerable: true,
       get: function() {
         return _transform2.transformSync;
       }
     });
-    Object.defineProperty((0, exports), "traverse", {
+    Object.defineProperty((0, exports2), "traverse", {
       enumerable: true,
       get: function() {
         return _traverse().default;
       }
     });
-    exports.version = exports.types = void 0;
+    exports2.version = exports2.types = void 0;
     var _file2 = require_file();
     var _buildExternalHelpers = require_build_external_helpers();
     var resolvers = require_files();
@@ -68731,7 +72424,7 @@ var require_lib27 = __commonJS({
       };
       return data;
     }
-    Object.defineProperty((0, exports), "types", {
+    Object.defineProperty((0, exports2), "types", {
       enumerable: true,
       get: function() {
         return _types();
@@ -68763,19 +72456,19 @@ var require_lib27 = __commonJS({
     var _transformFile = require_transform_file();
     var _transformAst = require_transform_ast();
     var _parse2 = require_parse4();
-    var version3 = exports.version = "7.27.1";
+    var version3 = exports2.version = "7.27.1";
     var resolvePlugin = (name, dirname2) => resolvers.resolvePlugin(name, dirname2, false).filepath;
-    exports.resolvePlugin = resolvePlugin;
+    exports2.resolvePlugin = resolvePlugin;
     var resolvePreset = (name, dirname2) => resolvers.resolvePreset(name, dirname2, false).filepath;
-    exports.resolvePreset = resolvePreset;
-    var DEFAULT_EXTENSIONS = exports.DEFAULT_EXTENSIONS = Object.freeze([".js", ".jsx", ".es6", ".es", ".mjs", ".cjs"]);
+    exports2.resolvePreset = resolvePreset;
+    var DEFAULT_EXTENSIONS = exports2.DEFAULT_EXTENSIONS = Object.freeze([".js", ".jsx", ".es6", ".es", ".mjs", ".cjs"]);
     {
-      exports.OptionManager = class OptionManager {
+      exports2.OptionManager = class OptionManager {
         init(opts) {
           return (0, _index2.loadOptionsSync)(opts);
         }
       };
-      exports.Plugin = function Plugin(alias) {
+      exports2.Plugin = function Plugin(alias) {
         throw new Error(`The (${alias}) Babel 5 plugin is being run with an unsupported Babel version.`);
       };
     }
@@ -68783,21 +72476,28 @@ var require_lib27 = __commonJS({
 });
 
 // server/index.ts
-import express3 from "express";
+var import_express3 = __toESM(require("express"), 1);
 
 // server/routes.ts
-import express from "express";
-import { createServer } from "http";
-import { WebSocketServer } from "ws";
+var import_express = __toESM(require("express"), 1);
+var import_http = require("http");
+
+// node_modules/ws/wrapper.mjs
+var import_stream = __toESM(require_stream(), 1);
+var import_receiver = __toESM(require_receiver(), 1);
+var import_sender = __toESM(require_sender(), 1);
+var import_websocket = __toESM(require_websocket(), 1);
+var import_websocket_server = __toESM(require_websocket_server(), 1);
+var wrapper_default = import_websocket.default;
 
 // server/storage.ts
-import { randomUUID } from "crypto";
+var import_crypto = require("crypto");
 
 // server/db.ts
-import { Pool as Pool3, neonConfig as neonConfig2 } from "@neondatabase/serverless";
+var import_serverless3 = require("@neondatabase/serverless");
 
 // node_modules/drizzle-orm/neon-serverless/driver.js
-import { neonConfig, Pool as Pool2 } from "@neondatabase/serverless";
+var import_serverless2 = require("@neondatabase/serverless");
 
 // node_modules/drizzle-orm/entity.js
 var entityKind = Symbol.for("drizzle:entityKind");
@@ -75192,10 +78892,7 @@ var PgDatabase = class {
 };
 
 // node_modules/drizzle-orm/neon-serverless/session.js
-import {
-  Pool,
-  types
-} from "@neondatabase/serverless";
+var import_serverless = require("@neondatabase/serverless");
 
 // node_modules/drizzle-orm/pg-core/session.js
 var PgPreparedQuery = class {
@@ -75298,16 +78995,16 @@ var NeonPreparedQuery = class extends PgPreparedQuery {
       types: {
         // @ts-ignore
         getTypeParser: (typeId, format) => {
-          if (typeId === types.builtins.TIMESTAMPTZ) {
+          if (typeId === import_serverless.types.builtins.TIMESTAMPTZ) {
             return (val) => val;
           }
-          if (typeId === types.builtins.TIMESTAMP) {
+          if (typeId === import_serverless.types.builtins.TIMESTAMP) {
             return (val) => val;
           }
-          if (typeId === types.builtins.DATE) {
+          if (typeId === import_serverless.types.builtins.DATE) {
             return (val) => val;
           }
-          if (typeId === types.builtins.INTERVAL) {
+          if (typeId === import_serverless.types.builtins.INTERVAL) {
             return (val) => val;
           }
           if (typeId === 1231) {
@@ -75325,7 +79022,7 @@ var NeonPreparedQuery = class extends PgPreparedQuery {
           if (typeId === 1182) {
             return (val) => val;
           }
-          return types.getTypeParser(typeId, format);
+          return import_serverless.types.getTypeParser(typeId, format);
         }
       }
     };
@@ -75336,16 +79033,16 @@ var NeonPreparedQuery = class extends PgPreparedQuery {
       types: {
         // @ts-ignore
         getTypeParser: (typeId, format) => {
-          if (typeId === types.builtins.TIMESTAMPTZ) {
+          if (typeId === import_serverless.types.builtins.TIMESTAMPTZ) {
             return (val) => val;
           }
-          if (typeId === types.builtins.TIMESTAMP) {
+          if (typeId === import_serverless.types.builtins.TIMESTAMP) {
             return (val) => val;
           }
-          if (typeId === types.builtins.DATE) {
+          if (typeId === import_serverless.types.builtins.DATE) {
             return (val) => val;
           }
-          if (typeId === types.builtins.INTERVAL) {
+          if (typeId === import_serverless.types.builtins.INTERVAL) {
             return (val) => val;
           }
           if (typeId === 1231) {
@@ -75363,7 +79060,7 @@ var NeonPreparedQuery = class extends PgPreparedQuery {
           if (typeId === 1182) {
             return (val) => val;
           }
-          return types.getTypeParser(typeId, format);
+          return import_serverless.types.getTypeParser(typeId, format);
         }
       }
     };
@@ -75437,7 +79134,7 @@ var NeonSession = class _NeonSession extends PgSession {
     );
   }
   async transaction(transaction, config2 = {}) {
-    const session = this.client instanceof Pool ? new _NeonSession(await this.client.connect(), this.dialect, this.schema, this.options) : this;
+    const session = this.client instanceof import_serverless.Pool ? new _NeonSession(await this.client.connect(), this.dialect, this.schema, this.options) : this;
     const tx = new NeonTransaction(this.dialect, session, this.schema);
     await tx.execute(sql`begin ${tx.getTransactionConfigSQL(config2)}`);
     try {
@@ -75448,7 +79145,7 @@ var NeonSession = class _NeonSession extends PgSession {
       await tx.execute(sql`rollback`);
       throw error35;
     } finally {
-      if (this.client instanceof Pool) {
+      if (this.client instanceof import_serverless.Pool) {
         session.client.release();
       }
     }
@@ -75514,21 +79211,21 @@ function construct(client, config2 = {}) {
 }
 function drizzle(...params) {
   if (typeof params[0] === "string") {
-    const instance = new Pool2({
+    const instance = new import_serverless2.Pool({
       connectionString: params[0]
     });
     return construct(instance, params[1]);
   }
   if (isConfig(params[0])) {
-    const { connection, client, ws: ws2, ...drizzleConfig } = params[0];
-    if (ws2) {
-      neonConfig.webSocketConstructor = ws2;
+    const { connection, client, ws, ...drizzleConfig } = params[0];
+    if (ws) {
+      import_serverless2.neonConfig.webSocketConstructor = ws;
     }
     if (client)
       return construct(client, drizzleConfig);
-    const instance = typeof connection === "string" ? new Pool2({
+    const instance = typeof connection === "string" ? new import_serverless2.Pool({
       connectionString: connection
-    }) : new Pool2(connection);
+    }) : new import_serverless2.Pool(connection);
     return construct(instance, drizzleConfig);
   }
   return construct(params[0], params[1]);
@@ -75539,9 +79236,6 @@ function drizzle(...params) {
   }
   drizzle2.mock = mock;
 })(drizzle || (drizzle = {}));
-
-// server/db.ts
-import ws from "ws";
 
 // shared/schema.ts
 var schema_exports = {};
@@ -86138,13 +89832,13 @@ var insertStatisticSchema = createInsertSchema(statistics).pick({
 });
 
 // server/db.ts
-neonConfig2.webSocketConstructor = ws;
+import_serverless3.neonConfig.webSocketConstructor = wrapper_default;
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL must be set. Did you forget to provision a database?"
   );
 }
-var pool = new Pool3({ connectionString: process.env.DATABASE_URL });
+var pool = new import_serverless3.Pool({ connectionString: process.env.DATABASE_URL });
 var db = drizzle(pool, { schema: schema_exports });
 
 // server/storage.ts
@@ -86289,7 +89983,7 @@ var DatabaseStorage = class {
   }
   // Chat session operations
   async createChatSession(session) {
-    const sessionToken = session.sessionToken || randomUUID();
+    const sessionToken = session.sessionToken || (0, import_crypto.randomUUID)();
     const now = /* @__PURE__ */ new Date();
     const result = await db.insert(chatSessions).values({
       ...session,
@@ -86402,12 +90096,12 @@ var DatabaseStorage = class {
 var storage = new DatabaseStorage();
 
 // server/initDb.ts
-import { hash } from "bcrypt";
-import { randomUUID as randomUUID2 } from "crypto";
+var import_bcrypt = require("bcrypt");
+var import_crypto2 = require("crypto");
 async function initDb() {
   try {
     console.log("Initializing database...");
-    const hashedPassword = await hash("admin123", 10);
+    const hashedPassword = await (0, import_bcrypt.hash)("admin123", 10);
     const now = /* @__PURE__ */ new Date();
     const [adminUser] = await db.insert(users).values({
       username: "admin",
@@ -86526,7 +90220,7 @@ async function initDb() {
     console.log("Created sample statistics");
     const [session1] = await db.insert(chatSessions).values({
       clientId: lojaConceito.id,
-      sessionToken: randomUUID2(),
+      sessionToken: (0, import_crypto2.randomUUID)(),
       phoneNumber: null,
       expiresAt: null,
       createdAt: now,
@@ -86608,7 +90302,7 @@ async function initDb() {
 }
 
 // server/routes.ts
-import { randomUUID as randomUUID3 } from "crypto";
+var import_crypto3 = require("crypto");
 
 // node_modules/zod/dist/esm/v3/external.js
 var external_exports2 = {};
@@ -90676,16 +94370,16 @@ var NEVER2 = INVALID2;
 
 // server/routes.ts
 async function registerRoutes(app2) {
-  const httpServer = createServer(app2);
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
-  wss.on("connection", (ws2) => {
+  const httpServer = (0, import_http.createServer)(app2);
+  const wss = new import_websocket_server.default({ server: httpServer, path: "/ws" });
+  wss.on("connection", (ws) => {
     console.log("WebSocket client connected");
-    ws2.on("message", async (message) => {
+    ws.on("message", async (message) => {
       try {
         const data = JSON.parse(message.toString());
         if (data.type === "join_support_chat") {
-          ws2.chatId = data.chatId;
-          ws2.userId = data.userId;
+          ws.chatId = data.chatId;
+          ws.userId = data.userId;
           console.log(`User joined support chat: ${data.chatId}`);
         } else if (data.type === "support_message" && data.chatId && data.content) {
           const newMessage = await storage.createSupportMessage({
@@ -90695,7 +94389,7 @@ async function registerRoutes(app2) {
             isRead: false
           });
           wss.clients.forEach((client) => {
-            if (client.chatId === data.chatId && client.readyState === ws2.OPEN) {
+            if (client.chatId === data.chatId && client.readyState === ws.OPEN) {
               client.send(JSON.stringify({
                 type: "support_message",
                 message: newMessage
@@ -90707,11 +94401,11 @@ async function registerRoutes(app2) {
         console.error("WebSocket message error:", err);
       }
     });
-    ws2.on("close", () => {
+    ws.on("close", () => {
       console.log("WebSocket client disconnected");
     });
   });
-  const apiRouter = express.Router();
+  const apiRouter = import_express.default.Router();
   apiRouter.post("/init-db", async (req, res) => {
     try {
       await initDb();
@@ -91006,7 +94700,7 @@ async function registerRoutes(app2) {
     try {
       const validatedData = insertChatSessionSchema.parse({
         ...req.body,
-        sessionToken: randomUUID3()
+        sessionToken: (0, import_crypto3.randomUUID)()
       });
       const session = await storage.createChatSession(validatedData);
       res.status(201).json(session);
@@ -91107,7 +94801,7 @@ async function registerRoutes(app2) {
       }
       const session = await storage.createChatSession({
         clientId: parseInt(clientId),
-        sessionToken: randomUUID3(),
+        sessionToken: (0, import_crypto3.randomUUID)(),
         phoneNumber: phoneNumber || void 0,
         expiresAt: expiresAt || void 0
       });
@@ -91124,19 +94818,20 @@ async function registerRoutes(app2) {
 }
 
 // server/vite.ts
-import express2 from "express";
-import fs from "fs";
-import path2 from "path";
-import { createServer as createViteServer, createLogger } from "vite";
+var import_express2 = __toESM(require("express"), 1);
+var import_fs = __toESM(require("fs"), 1);
+var import_path2 = __toESM(require("path"), 1);
+var import_vite3 = require("vite");
 
 // vite.config.ts
-import { defineConfig } from "vite";
+var import_vite2 = require("vite");
 
 // node_modules/@vitejs/plugin-react/dist/index.mjs
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
-import { createFilter } from "vite";
+var import_node_path = require("node:path");
+var import_node_url = require("node:url");
+var import_node_fs = require("node:fs");
+var import_vite = require("vite");
+var import_meta = {};
 var runtimePublicPath = "/@react-refresh";
 var reactCompRE = /extends\s+(?:React\.)?(?:Pure)?Component/;
 var refreshContentRE = /\$Refresh(?:Reg|Sig)\$\(/;
@@ -91238,8 +94933,8 @@ var silenceUseClientWarning = (userConfig) => ({
     }
   }
 });
-var _dirname = dirname(fileURLToPath(import.meta.url));
-var refreshRuntimePath = join(_dirname, "refresh-runtime.js");
+var _dirname = (0, import_node_path.dirname)((0, import_node_url.fileURLToPath)(import_meta.url));
+var refreshRuntimePath = (0, import_node_path.join)(_dirname, "refresh-runtime.js");
 var babel;
 async function loadBabel() {
   if (!babel) {
@@ -91250,7 +94945,7 @@ async function loadBabel() {
 var defaultIncludeRE = /\.[tj]sx?$/;
 var tsRE = /\.tsx?$/;
 function viteReact(opts = {}) {
-  const filter = createFilter(opts.include ?? defaultIncludeRE, opts.exclude);
+  const filter = (0, import_vite.createFilter)(opts.include ?? defaultIncludeRE, opts.exclude);
   const jsxImportSource = opts.jsxImportSource ?? "react";
   const jsxImportRuntime = `${jsxImportSource}/jsx-runtime`;
   const jsxImportDevRuntime = `${jsxImportSource}/jsx-dev-runtime`;
@@ -91414,7 +95109,7 @@ function viteReact(opts = {}) {
     },
     load(id) {
       if (id === runtimePublicPath) {
-        return readFileSync(refreshRuntimePath, "utf-8").replace(
+        return (0, import_node_fs.readFileSync)(refreshRuntimePath, "utf-8").replace(
           /__README_URL__/g,
           "https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react"
         );
@@ -91439,8 +95134,8 @@ function loadPlugin(path3) {
   const cached2 = loadedPlugin.get(path3);
   if (cached2)
     return cached2;
-  const promise2 = import(path3).then((module) => {
-    const value2 = module.default || module;
+  const promise2 = import(path3).then((module2) => {
+    const value2 = module2.default || module2;
     loadedPlugin.set(path3, value2);
     return value2;
   });
@@ -91481,14 +95176,14 @@ function getReactCompilerRuntimeModule(plugin) {
 }
 
 // vite.config.ts
-import path from "path";
-var vite_config_default = defineConfig({
+var import_path = __toESM(require("path"), 1);
+var vite_config_default = (0, import_vite2.defineConfig)({
   root: "client",
   // Set the root to the client directory
   plugins: [viteReact()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "client/src")
+      "@": import_path.default.resolve(__dirname, "client/src")
     }
   },
   server: {
@@ -91501,7 +95196,7 @@ var vite_config_default = defineConfig({
 });
 
 // node_modules/nanoid/index.js
-import crypto from "crypto";
+var import_crypto4 = __toESM(require("crypto"), 1);
 
 // node_modules/nanoid/url-alphabet/index.js
 var urlAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
@@ -91513,10 +95208,10 @@ var poolOffset;
 var fillPool = (bytes) => {
   if (!pool2 || pool2.length < bytes) {
     pool2 = Buffer.allocUnsafe(bytes * POOL_SIZE_MULTIPLIER);
-    crypto.randomFillSync(pool2);
+    import_crypto4.default.randomFillSync(pool2);
     poolOffset = 0;
   } else if (poolOffset + bytes > pool2.length) {
-    crypto.randomFillSync(pool2);
+    import_crypto4.default.randomFillSync(pool2);
     poolOffset = 0;
   }
   poolOffset += bytes;
@@ -91531,10 +95226,8 @@ var nanoid3 = (size = 21) => {
 };
 
 // server/vite.ts
-import { fileURLToPath as fileURLToPath2 } from "url";
-var __filename = fileURLToPath2(import.meta.url);
-var __dirname2 = path2.dirname(__filename);
-var viteLogger = createLogger();
+var import_meta2 = {};
+var viteLogger = (0, import_vite3.createLogger)();
 function log(message, source = "express") {
   const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -91550,7 +95243,7 @@ async function setupVite(app2, server) {
     hmr: { server },
     allowedHosts: true
   };
-  const vite = await createViteServer({
+  const vite = await (0, import_vite3.createServer)({
     ...vite_config_default,
     configFile: false,
     customLogger: {
@@ -91567,13 +95260,13 @@ async function setupVite(app2, server) {
   app2.use("*", async (req, res, next) => {
     const url2 = req.originalUrl;
     try {
-      const clientTemplate = path2.resolve(
-        __dirname2,
+      const clientTemplate = import_path2.default.resolve(
+        import_meta2.dirname,
         "..",
         "client",
         "index.html"
       );
-      let template = await fs.promises.readFile(clientTemplate, "utf-8");
+      let template = await import_fs.default.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid3()}"`
@@ -91587,22 +95280,22 @@ async function setupVite(app2, server) {
   });
 }
 function serveStatic(app2) {
-  const distPath = path2.resolve(__dirname2, "public");
-  if (!fs.existsSync(distPath)) {
+  const distPath = import_path2.default.resolve(import_meta2.dirname, "public");
+  if (!import_fs.default.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
     );
   }
-  app2.use(express2.static(distPath));
+  app2.use(import_express2.default.static(distPath));
   app2.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
+    res.sendFile(import_path2.default.resolve(distPath, "index.html"));
   });
 }
 
 // server/index.ts
-var app = express3();
-app.use(express3.json());
-app.use(express3.urlencoded({ extended: false }));
+var app = (0, import_express3.default)();
+app.use(import_express3.default.json());
+app.use(import_express3.default.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   const start = Date.now();
   const path3 = req.path;
