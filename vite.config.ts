@@ -1,19 +1,27 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
-  root: 'client', // Set the root to the client directory
+  root: path.join(__dirname, 'client'),
+  publicDir: path.join(__dirname, 'client/public'),
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'client/src'),
+      '@': path.join(__dirname, 'client/src'),
     },
   },
-  server: {
-    port: 3000
-  },
   build: {
-    outDir: '../dist/client' // Adjust output directory relative to new root
-  }
-})
+    outDir: path.join(__dirname, 'dist/client'),
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.join(__dirname, 'client/index.html'),
+      },
+    },
+  },
+});
